@@ -1,7 +1,7 @@
 # GRPO training config — Group Relative Policy Optimization via trl.
 
 model:
-  name: "Qwen/Qwen2.5-Coder-0.5B-Instruct"
+  name: "Qwen/Qwen2.5-Coder-1.5B-Instruct"
   quantization: "4bit"
   dtype: "bfloat16"
 
@@ -18,12 +18,12 @@ dataset:
   max_samples: null
 
 training:
-  num_train_epochs: 3
+  max_steps: 1000
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 8
-  learning_rate: 5.0e-6
+  learning_rate: 1.0e-6
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.05
+  warmup_steps: 50
   bf16: true
   logging_steps: 10
   save_steps: 200
@@ -32,7 +32,7 @@ training:
   log_dir: "experiments/logs/grpo"
 
 grpo:
-  num_generations: 4 # group size G — reduce to 2 if OOM
+  num_generations: 8 # group size G — reduce to 4 if OOM
   max_completion_length: 512
   max_prompt_length: 256
   beta: 0.04 # KL penalty coefficient
@@ -46,4 +46,4 @@ reward:
 wandb:
   project: "grpo-strict-generation"
   run_name: null # null = auto-generated
-  tags: ["grpo", "Qwen2.5-Coder-0.5B"]
+  tags: ["grpo", "Qwen2.5-Coder-1.5B"]

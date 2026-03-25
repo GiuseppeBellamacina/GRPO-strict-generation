@@ -167,7 +167,7 @@ def main() -> None:
         gradient_accumulation_steps=training_cfg.get("gradient_accumulation_steps", 4),
         learning_rate=training_cfg.get("learning_rate", 2e-5),
         lr_scheduler_type=training_cfg.get("lr_scheduler_type", "cosine"),
-        warmup_ratio=training_cfg.get("warmup_ratio", 0.05),
+        warmup_steps=training_cfg.get("warmup_steps", 50),
         bf16=training_cfg.get("bf16", True),
         logging_steps=training_cfg.get("logging_steps", 10),
         logging_dir=log_dir,

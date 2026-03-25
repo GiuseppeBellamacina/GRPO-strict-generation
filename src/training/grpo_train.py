@@ -129,12 +129,12 @@ def main() -> None:
 
     grpo_config = GRPOConfig(
         output_dir=output_dir,
-        num_train_epochs=training_cfg.get("num_train_epochs", 3),
+        max_steps=training_cfg.get("max_steps", 1000),
         per_device_train_batch_size=training_cfg.get("per_device_train_batch_size", 1),
         gradient_accumulation_steps=training_cfg.get("gradient_accumulation_steps", 8),
         learning_rate=training_cfg.get("learning_rate", 5e-6),
         lr_scheduler_type=training_cfg.get("lr_scheduler_type", "cosine"),
-        warmup_ratio=training_cfg.get("warmup_ratio", 0.05),
+        warmup_steps=training_cfg.get("warmup_steps", 50),
         bf16=training_cfg.get("bf16", True),
         logging_steps=training_cfg.get("logging_steps", 10),
         logging_dir=log_dir,

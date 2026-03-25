@@ -23,7 +23,7 @@ training:
   gradient_accumulation_steps: 4
   learning_rate: 2.0e-5
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.05
+  warmup_steps: 50
   bf16: true
   logging_steps: 10
   save_steps: 200
