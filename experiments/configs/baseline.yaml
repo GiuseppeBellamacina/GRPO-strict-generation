@@ -2,8 +2,6 @@
 
 model:
   name: "Qwen/Qwen2.5-0.5B-Instruct"
-  # Alternatives to test:
-  #   - "Qwen/Qwen2.5-Coder-1.5B-Instruct"
   quantization: "4bit" # "4bit", "8bit", or "none"
   dtype: "bfloat16"
 

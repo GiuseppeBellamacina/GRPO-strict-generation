@@ -1,7 +1,7 @@
 # SFT training config — Supervised Fine-Tuning for comparison with GRPO.
 
 model:
-  name: "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+  name: "Qwen/Qwen2.5-Coder-0.5B-Instruct"
   quantization: "4bit"
   dtype: "bfloat16"
 
@@ -35,4 +35,4 @@ training:
 wandb:
   project: "grpo-strict-generation"
   run_name: null
-  tags: ["sft", "Qwen2.5-Coder-1.5B"]
+  tags: ["sft", "Qwen2.5-Coder-0.5B"]

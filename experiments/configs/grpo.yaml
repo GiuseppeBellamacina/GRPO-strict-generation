@@ -1,7 +1,7 @@
 # GRPO training config — Group Relative Policy Optimization via trl.
 
 model:
-  name: "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+  name: "Qwen/Qwen2.5-Coder-0.5B-Instruct"
   quantization: "4bit"
   dtype: "bfloat16"
 
@@ -46,4 +46,4 @@ reward:
 wandb:
   project: "grpo-strict-generation"
   run_name: null # null = auto-generated
-  tags: ["grpo", "Qwen2.5-Coder-1.5B"]
+  tags: ["grpo", "Qwen2.5-Coder-0.5B"]
