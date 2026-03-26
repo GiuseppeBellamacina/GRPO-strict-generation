@@ -44,6 +44,10 @@ dev = [
     "black[jupyter]",
     "ruff",
 ]
+fast = [
+    "unsloth",
+    "vllm",
+]
 
 [tool.isort]
 profile = "black"

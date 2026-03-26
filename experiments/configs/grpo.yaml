@@ -4,6 +4,7 @@ model:
   name: "Qwen/Qwen2.5-Coder-1.5B-Instruct"
   quantization: "4bit"
   dtype: "bfloat16"
+  use_unsloth: false # set true for 2-5x faster training + less VRAM
 
 lora:
   r: 16
@@ -37,6 +38,7 @@ grpo:
   max_prompt_length: 256
   beta: 0.04 # KL penalty coefficient
   temperature: 0.7
+  use_vllm: false # set true to accelerate generation during GRPO training
 
 reward:
   type: "combined" # "json", "python", or "combined"

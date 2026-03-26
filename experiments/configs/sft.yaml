@@ -4,6 +4,7 @@ model:
   name: "Qwen/Qwen2.5-Coder-0.5B-Instruct"
   quantization: "4bit"
   dtype: "bfloat16"
+  use_unsloth: false # set true for 2-5x faster training + less VRAM
 
 lora:
   r: 16

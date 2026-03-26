@@ -16,6 +16,7 @@ generation:
   top_p: 0.95
   do_sample: true
   num_return_sequences: 1 # increase for Pass@k with k > 1
+  use_vllm: false # set true for fast batch inference via vLLM
 
 evaluation:
   pass_at_k: [1, 5, 10]

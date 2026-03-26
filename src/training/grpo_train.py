@@ -143,6 +143,8 @@ def main() -> None:
         max_completion_length=grpo_cfg.get("max_completion_length", 512),
         beta=grpo_cfg.get("beta", 0.04),
         temperature=grpo_cfg.get("temperature", 0.7),
+        # vLLM — accelerates generation during GRPO training
+        use_vllm=grpo_cfg.get("use_vllm", False),
         report_to="wandb",
     )
 
