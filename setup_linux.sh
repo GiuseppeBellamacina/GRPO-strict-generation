@@ -12,17 +12,17 @@ echo "📦 Installazione uv..."
 pip install -q uv
 echo "✅ uv installato"
 
-# Step 2: Sincronizza dipendenze + installa progetto in editable mode
+# Step 2: Installa dipendenze + progetto in editable mode (nel Python di sistema)
 echo ""
-echo "📦 Sincronizzazione dipendenze (uv sync)..."
-uv sync
-echo "✅ Dipendenze sincronizzate + progetto installato in editable mode"
+echo "📦 Installazione dipendenze + progetto..."
+uv pip install --system -e .
+echo "✅ Dipendenze installate + progetto in editable mode"
 
-# Step 4: Verifica installazione
+# Step 3: Verifica installazione
 echo ""
 echo "🔍 Verifica installazione..."
 
-uv run python3 -c "
+python3 -c "
 import torch
 
 print()
@@ -75,5 +75,5 @@ print('='*60)
 
 echo ""
 echo "=== Setup Completato! ==="
-echo "✅ Dipendenze installate da pyproject.toml"
-echo "✅ Progetto installato in editable mode"
+echo "✅ Dipendenze installate nel Python di sistema"
+echo "✅ Progetto installato in editable mode (src importabile)"
