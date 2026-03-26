@@ -105,9 +105,7 @@ def main() -> None:
         prompt = format_prompt_for_model(sample, tokenizer)
         formatted_prompts.append({"prompt": prompt, "task_type": sample["task_type"]})
 
-    prompt_dataset = Dataset.from_list(
-        [{"prompt": r["prompt"]} for r in formatted_prompts]
-    )
+    prompt_dataset = Dataset.from_list([{"prompt": r["prompt"]} for r in formatted_prompts])
 
     # Build reward function
     reward_fn = build_reward_fn(reward_cfg)

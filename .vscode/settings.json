@@ -7,5 +7,6 @@
     "reportUnboundVariable": "none",
     "reportArgumentType": "none",
     "reportAttributeAccessIssue": "none"
-  }
+  },
+  "python.analysis.extraPaths": ["${workspaceFolder}/src"]
 }

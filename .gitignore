@@ -1,19 +1,43 @@
-resources/
-
-.venv/
-env/
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
 
+# Virtual env
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env & secrets
+.env
+
+# Logs
+*.log
+
+# Linting & formatting
+.ruff_cache/
+
+# Data & artifacts
 data/
+
+# Experiments
 experiments/logs/
 experiments/checkpoints/
 
-.ipynb_checkpoints/
+# ML model weights
+*.pt
+*.bin
+*.safetensors
+*.ckpt
 
-*.log
-
-.DS_Store
-
-.env
+# Tracking
 wandb/
+runs/
+
+# OS
+.DS_Store
+Thumbs.db

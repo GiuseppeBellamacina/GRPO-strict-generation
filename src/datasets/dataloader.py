@@ -33,24 +33,18 @@ def load_synthetic_dataset(
     ds_path = Path(path)
     if not ds_path.exists():
         raise FileNotFoundError(
-            f"Dataset not found at {ds_path}. "
-            "Run: python -m src.datasets.synthetic_dataset --output data/synthetic"
+            f"Dataset not found at {ds_path}. " "Run: python -m src.datasets.synthetic_dataset --output data/synthetic"
         )
 
     ds: DatasetDict = load_from_disk(str(ds_path))  # type: ignore[assignment]
 
     if split is not None:
         if split not in ds:
-            raise ValueError(
-                f"Split '{split}' not found. Available: {list(ds.keys())}"
-            )
+            raise ValueError(f"Split '{split}' not found. Available: {list(ds.keys())}")
         ds = DatasetDict({split: ds[split]})  # type: ignore[arg-type]
 
     if max_samples is not None:
-        ds = DatasetDict({
-            k: v.select(range(min(max_samples, len(v))))
-            for k, v in ds.items()
-        })
+        ds = DatasetDict({k: v.select(range(min(max_samples, len(v)))) for k, v in ds.items()})
 
     return ds
 
@@ -70,9 +64,7 @@ def format_prompt_for_model(
     ]
 
     if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
-        return tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
     # Fallback: ChatML format
     parts = []
@@ -88,11 +80,13 @@ def prepare_grpo_dataset(ds, tokenizer=None) -> list[dict]:
     for i in range(len(ds)):
         sample = ds[i]
         prompt_text = format_prompt_for_model(sample, tokenizer)
-        rows.append({
-            "prompt": prompt_text,
-            "task_type": sample["task_type"],
-            "difficulty": sample["difficulty"],
-        })
+        rows.append(
+            {
+                "prompt": prompt_text,
+                "task_type": sample["task_type"],
+                "difficulty": sample["difficulty"],
+            }
+        )
     return rows
 
 

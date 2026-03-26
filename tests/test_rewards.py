@@ -41,7 +41,7 @@ class TestJsonReward:
         assert json_reward(text) == 1.0
 
     def test_valid_array(self):
-        text = '```json\n[1, 2, 3]\n```'
+        text = "```json\n[1, 2, 3]\n```"
         assert json_reward(text) == 1.0
 
     def test_invalid_json(self):

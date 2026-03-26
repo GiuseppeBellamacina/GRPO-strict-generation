@@ -33,21 +33,23 @@ _JSON_SIMPLE: list[dict] = [
         },
     },
     {
-        "instruction": (
-            "Generate a JSON array containing exactly {n} strings representing {topic}."
-        ),
+        "instruction": ("Generate a JSON array containing exactly {n} strings representing {topic}."),
         "params": lambda: {
             "n": random.randint(3, 7),
-            "topic": random.choice([
-                "fruit names", "country names", "programming languages",
-                "animal species", "planet names",
-            ]),
+            "topic": random.choice(
+                [
+                    "fruit names",
+                    "country names",
+                    "programming languages",
+                    "animal species",
+                    "planet names",
+                ]
+            ),
         },
     },
     {
         "instruction": (
-            'Generate a JSON object with a key "{k1}" (string) and a key '
-            '"{k2}" which is an array of {n} integers.'
+            'Generate a JSON object with a key "{k1}" (string) and a key ' '"{k2}" which is an array of {n} integers.'
         ),
         "params": lambda: {
             "k1": random.choice(["id", "name", "label"]),
@@ -79,10 +81,15 @@ _JSON_MEDIUM: list[dict] = [
             "including one nested object and one array field."
         ),
         "params": lambda: {
-            "entity": random.choice([
-                "user profile", "product listing", "blog post",
-                "movie record", "employee record",
-            ]),
+            "entity": random.choice(
+                [
+                    "user profile",
+                    "product listing",
+                    "blog post",
+                    "movie record",
+                    "employee record",
+                ]
+            ),
             "n": random.randint(5, 8),
         },
     },
@@ -92,9 +99,14 @@ _JSON_MEDIUM: list[dict] = [
             "with keys for {k1}, {k2}, and a nested {k3} section."
         ),
         "params": lambda: {
-            "app_type": random.choice([
-                "web server", "database", "logging service", "cache layer",
-            ]),
+            "app_type": random.choice(
+                [
+                    "web server",
+                    "database",
+                    "logging service",
+                    "cache layer",
+                ]
+            ),
             "k1": random.choice(["host", "port", "name"]),
             "k2": random.choice(["timeout", "retries", "max_connections"]),
             "k3": random.choice(["auth", "ssl", "logging", "metrics"]),
@@ -110,11 +122,15 @@ _JSON_HARD: list[dict] = [
             "a nested object property, and an array property with item validation."
         ),
         "params": lambda: {
-            "entity": random.choice([
-                "REST API error response", "e-commerce order",
-                "weather forecast", "user registration form",
-                "CI/CD pipeline definition",
-            ]),
+            "entity": random.choice(
+                [
+                    "REST API error response",
+                    "e-commerce order",
+                    "weather forecast",
+                    "user registration form",
+                    "CI/CD pipeline definition",
+                ]
+            ),
         },
     },
     {
@@ -125,9 +141,15 @@ _JSON_HARD: list[dict] = [
             "least {f} fields including one nested object."
         ),
         "params": lambda: {
-            "entity": random.choice([
-                "users", "products", "articles", "transactions", "repositories",
-            ]),
+            "entity": random.choice(
+                [
+                    "users",
+                    "products",
+                    "articles",
+                    "transactions",
+                    "repositories",
+                ]
+            ),
             "n": random.randint(2, 4),
             "f": random.randint(4, 6),
         },
@@ -139,12 +161,14 @@ _JSON_HARD: list[dict] = [
             '"name" (string), "id" (integer), and "children" (array of sub-objects).'
         ),
         "params": lambda: {
-            "domain": random.choice([
-                "company organizational chart",
-                "file system directory tree",
-                "category taxonomy",
-                "geographical region breakdown",
-            ]),
+            "domain": random.choice(
+                [
+                    "company organizational chart",
+                    "file system directory tree",
+                    "category taxonomy",
+                    "geographical region breakdown",
+                ]
+            ),
         },
     },
 ]
@@ -155,78 +179,109 @@ _JSON_HARD: list[dict] = [
 
 _PYTHON_SIMPLE: list[dict] = [
     {
-        "instruction": (
-            "Write a Python function called `{fname}` that takes {args} "
-            "and returns {ret}."
-        ),
+        "instruction": ("Write a Python function called `{fname}` that takes {args} " "and returns {ret}."),
         "params": lambda: {
-            "fname": random.choice([
-                "factorial", "fibonacci", "is_prime", "reverse_string", "sum_list",
-            ]),
-            "args": random.choice([
-                "an integer n", "a string s", "a list of integers",
-            ]),
-            "ret": random.choice([
-                "the factorial of n", "the n-th Fibonacci number",
-                "True if n is prime, False otherwise",
-                "the reversed string", "the sum of the list",
-            ]),
+            "fname": random.choice(
+                [
+                    "factorial",
+                    "fibonacci",
+                    "is_prime",
+                    "reverse_string",
+                    "sum_list",
+                ]
+            ),
+            "args": random.choice(
+                [
+                    "an integer n",
+                    "a string s",
+                    "a list of integers",
+                ]
+            ),
+            "ret": random.choice(
+                [
+                    "the factorial of n",
+                    "the n-th Fibonacci number",
+                    "True if n is prime, False otherwise",
+                    "the reversed string",
+                    "the sum of the list",
+                ]
+            ),
         },
     },
     {
         "instruction": (
-            "Write a Python function called `{fname}` that takes a list of "
-            "{elem_type} and returns {ret}."
+            "Write a Python function called `{fname}` that takes a list of " "{elem_type} and returns {ret}."
         ),
         "params": lambda: {
-            "fname": random.choice([
-                "find_max", "find_min", "count_even", "filter_positive", "unique_elements",
-            ]),
+            "fname": random.choice(
+                [
+                    "find_max",
+                    "find_min",
+                    "count_even",
+                    "filter_positive",
+                    "unique_elements",
+                ]
+            ),
             "elem_type": random.choice(["integers", "floats", "strings"]),
-            "ret": random.choice([
-                "the maximum element", "the minimum element",
-                "the number of even numbers", "only the positive values",
-                "a list with duplicates removed",
-            ]),
+            "ret": random.choice(
+                [
+                    "the maximum element",
+                    "the minimum element",
+                    "the number of even numbers",
+                    "only the positive values",
+                    "a list with duplicates removed",
+                ]
+            ),
         },
     },
     {
-        "instruction": (
-            "Write a Python function `{fname}` that converts {input_desc} "
-            "to {output_desc}."
-        ),
+        "instruction": ("Write a Python function `{fname}` that converts {input_desc} " "to {output_desc}."),
         "params": lambda: {
-            "fname": random.choice([
-                "celsius_to_fahrenheit", "to_uppercase", "flatten_list",
-                "words_to_sentence", "int_to_binary",
-            ]),
-            "input_desc": random.choice([
-                "a temperature in Celsius", "a string",
-                "a nested list", "a list of words", "an integer",
-            ]),
-            "output_desc": random.choice([
-                "Fahrenheit", "all uppercase", "a flat list",
-                "a single sentence string", "a binary string representation",
-            ]),
+            "fname": random.choice(
+                [
+                    "celsius_to_fahrenheit",
+                    "to_uppercase",
+                    "flatten_list",
+                    "words_to_sentence",
+                    "int_to_binary",
+                ]
+            ),
+            "input_desc": random.choice(
+                [
+                    "a temperature in Celsius",
+                    "a string",
+                    "a nested list",
+                    "a list of words",
+                    "an integer",
+                ]
+            ),
+            "output_desc": random.choice(
+                [
+                    "Fahrenheit",
+                    "all uppercase",
+                    "a flat list",
+                    "a single sentence string",
+                    "a binary string representation",
+                ]
+            ),
         },
     },
 ]
 
 _PYTHON_MEDIUM: list[dict] = [
     {
-        "instruction": (
-            "Write a Python class called `{cname}` that implements a {ds} "
-            "with methods: {methods}."
-        ),
+        "instruction": ("Write a Python class called `{cname}` that implements a {ds} " "with methods: {methods}."),
         "params": lambda: {
             "cname": random.choice(["Stack", "Queue", "LinkedList", "MinHeap"]),
             "ds": random.choice(["stack", "queue", "singly linked list", "min-heap"]),
-            "methods": random.choice([
-                "push, pop, peek, is_empty, size",
-                "enqueue, dequeue, peek, is_empty, size",
-                "append, prepend, delete, search, to_list",
-                "insert, extract_min, peek, size, is_empty",
-            ]),
+            "methods": random.choice(
+                [
+                    "push, pop, peek, is_empty, size",
+                    "enqueue, dequeue, peek, is_empty, size",
+                    "append, prepend, delete, search, to_list",
+                    "insert, extract_min, peek, size, is_empty",
+                ]
+            ),
         },
     },
     {
@@ -235,35 +290,49 @@ _PYTHON_MEDIUM: list[dict] = [
             "and raise a ValueError for invalid input."
         ),
         "params": lambda: {
-            "fname": random.choice([
-                "merge_sorted_lists", "binary_search", "matrix_multiply",
-                "parse_csv_line", "validate_email",
-            ]),
-            "desc": random.choice([
-                "merges two sorted lists into a single sorted list",
-                "performs binary search on a sorted list and returns the index",
-                "multiplies two 2D matrices represented as lists of lists",
-                "parses a CSV line respecting quoted fields into a list of strings",
-                "validates an email address format and returns True/False",
-            ]),
+            "fname": random.choice(
+                [
+                    "merge_sorted_lists",
+                    "binary_search",
+                    "matrix_multiply",
+                    "parse_csv_line",
+                    "validate_email",
+                ]
+            ),
+            "desc": random.choice(
+                [
+                    "merges two sorted lists into a single sorted list",
+                    "performs binary search on a sorted list and returns the index",
+                    "multiplies two 2D matrices represented as lists of lists",
+                    "parses a CSV line respecting quoted fields into a list of strings",
+                    "validates an email address format and returns True/False",
+                ]
+            ),
         },
     },
     {
         "instruction": (
-            "Write a Python class `{cname}` that {desc}. Include type hints "
-            "for all methods and a __repr__ method."
+            "Write a Python class `{cname}` that {desc}. Include type hints " "for all methods and a __repr__ method."
         ),
         "params": lambda: {
-            "cname": random.choice([
-                "BankAccount", "Matrix", "Polynomial", "Interval", "Vector2D",
-            ]),
-            "desc": random.choice([
-                "models a bank account with deposit, withdraw, and balance methods",
-                "represents a 2D matrix supporting addition and multiplication",
-                "represents a polynomial supporting addition and evaluation at a point",
-                "represents a numeric interval supporting overlap checking and merge",
-                "represents a 2D vector supporting addition, dot product, and magnitude",
-            ]),
+            "cname": random.choice(
+                [
+                    "BankAccount",
+                    "Matrix",
+                    "Polynomial",
+                    "Interval",
+                    "Vector2D",
+                ]
+            ),
+            "desc": random.choice(
+                [
+                    "models a bank account with deposit, withdraw, and balance methods",
+                    "represents a 2D matrix supporting addition and multiplication",
+                    "represents a polynomial supporting addition and evaluation at a point",
+                    "represents a numeric interval supporting overlap checking and merge",
+                    "represents a 2D vector supporting addition, dot product, and magnitude",
+                ]
+            ),
         },
     },
 ]
@@ -275,18 +344,24 @@ _PYTHON_HARD: list[dict] = [
             "The decorator should work with functions that have any signature."
         ),
         "params": lambda: {
-            "dname": random.choice([
-                "retry", "cache_with_ttl", "rate_limiter",
-                "log_calls", "validate_types",
-            ]),
-            "desc": random.choice([
-                "retries the decorated function up to n times "
-                "on exception with exponential backoff",
-                "caches function results with a time-to-live (TTL) in seconds",
-                "limits function calls to at most n per minute, raising RuntimeError if exceeded",
-                "logs function name, arguments, return value, and execution time",
-                "validates that arguments match the function's type annotations at runtime",
-            ]),
+            "dname": random.choice(
+                [
+                    "retry",
+                    "cache_with_ttl",
+                    "rate_limiter",
+                    "log_calls",
+                    "validate_types",
+                ]
+            ),
+            "desc": random.choice(
+                [
+                    "retries the decorated function up to n times " "on exception with exponential backoff",
+                    "caches function results with a time-to-live (TTL) in seconds",
+                    "limits function calls to at most n per minute, raising RuntimeError if exceeded",
+                    "logs function name, arguments, return value, and execution time",
+                    "validates that arguments match the function's type annotations at runtime",
+                ]
+            ),
         },
     },
     {
@@ -295,17 +370,24 @@ _PYTHON_HARD: list[dict] = [
             "Implement both __enter__ and __exit__ methods with proper error handling."
         ),
         "params": lambda: {
-            "cname": random.choice([
-                "Timer", "TempDirectory", "DatabaseTransaction",
-                "FileLocker", "ResourcePool",
-            ]),
-            "desc": random.choice([
-                "measures and stores the elapsed time of the code block",
-                "creates a temporary directory, yields its path, and cleans it up on exit",
-                "wraps a database transaction with automatic commit/rollback",
-                "acquires an exclusive file lock and releases it on exit",
-                "manages a pool of reusable resources with borrow/return semantics",
-            ]),
+            "cname": random.choice(
+                [
+                    "Timer",
+                    "TempDirectory",
+                    "DatabaseTransaction",
+                    "FileLocker",
+                    "ResourcePool",
+                ]
+            ),
+            "desc": random.choice(
+                [
+                    "measures and stores the elapsed time of the code block",
+                    "creates a temporary directory, yields its path, and cleans it up on exit",
+                    "wraps a database transaction with automatic commit/rollback",
+                    "acquires an exclusive file lock and releases it on exit",
+                    "manages a pool of reusable resources with borrow/return semantics",
+                ]
+            ),
         },
     },
     {
@@ -314,17 +396,33 @@ _PYTHON_HARD: list[dict] = [
             "Include a concrete example with at least two {components}."
         ),
         "params": lambda: {
-            "cname": random.choice([
-                "EventBus", "CommandHandler", "PipelineBuilder",
-                "StateMachine", "PluginRegistry",
-            ]),
-            "pattern": random.choice([
-                "Observer", "Command", "Builder", "State", "Strategy",
-            ]),
-            "components": random.choice([
-                "observers", "commands", "pipeline stages",
-                "states and transitions", "strategy implementations",
-            ]),
+            "cname": random.choice(
+                [
+                    "EventBus",
+                    "CommandHandler",
+                    "PipelineBuilder",
+                    "StateMachine",
+                    "PluginRegistry",
+                ]
+            ),
+            "pattern": random.choice(
+                [
+                    "Observer",
+                    "Command",
+                    "Builder",
+                    "State",
+                    "Strategy",
+                ]
+            ),
+            "components": random.choice(
+                [
+                    "observers",
+                    "commands",
+                    "pipeline stages",
+                    "states and transitions",
+                    "strategy implementations",
+                ]
+            ),
         },
     },
 ]
@@ -368,12 +466,8 @@ def generate_sample(rng: random.Random | None = None) -> dict:
         rng = random.Random()
 
     # Pick task type, then difficulty
-    task_type = rng.choices(
-        list(TYPE_WEIGHTS.keys()), weights=list(TYPE_WEIGHTS.values()), k=1
-    )[0]
-    difficulty = rng.choices(
-        list(DIFFICULTY_WEIGHTS.keys()), weights=list(DIFFICULTY_WEIGHTS.values()), k=1
-    )[0]
+    task_type = rng.choices(list(TYPE_WEIGHTS.keys()), weights=list(TYPE_WEIGHTS.values()), k=1)[0]
+    difficulty = rng.choices(list(DIFFICULTY_WEIGHTS.keys()), weights=list(DIFFICULTY_WEIGHTS.values()), k=1)[0]
 
     pool_key = f"{task_type}_{difficulty}"
     pool = TASK_POOLS[pool_key]
@@ -409,10 +503,12 @@ def generate_dataset(
     def _to_columnar(rows: list[dict]) -> dict:
         return {k: [r[k] for r in rows] for k in rows[0]}
 
-    return DatasetDict({
-        "train": Dataset.from_dict(_to_columnar(train_samples)),
-        "test": Dataset.from_dict(_to_columnar(test_samples)),
-    })
+    return DatasetDict(
+        {
+            "train": Dataset.from_dict(_to_columnar(train_samples)),
+            "test": Dataset.from_dict(_to_columnar(test_samples)),
+        }
+    )
 
 
 def main() -> None:

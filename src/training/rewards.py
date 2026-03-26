@@ -38,9 +38,7 @@ def extract_code_block(text: str, language: str) -> str | None:
     if language == "json" and (stripped.startswith("{") or stripped.startswith("[")):
         return stripped
     if language == "python" and (
-        stripped.startswith("def ")
-        or stripped.startswith("class ")
-        or stripped.startswith("import ")
+        stripped.startswith("def ") or stripped.startswith("class ") or stripped.startswith("import ")
     ):
         return stripped
 

@@ -171,12 +171,14 @@ def main() -> None:
     completions_path = output_dir / "completions.json"
     completion_records = []
     for i, comps in enumerate(completions_per_prompt):
-        completion_records.append({
-            "prompt": prompts[i],
-            "task_type": task_types[i],
-            "difficulty": difficulties[i],
-            "completions": comps,
-        })
+        completion_records.append(
+            {
+                "prompt": prompts[i],
+                "task_type": task_types[i],
+                "difficulty": difficulties[i],
+                "completions": comps,
+            }
+        )
     completions_path.write_text(
         json.dumps(completion_records, indent=2, ensure_ascii=False),
         encoding="utf-8",

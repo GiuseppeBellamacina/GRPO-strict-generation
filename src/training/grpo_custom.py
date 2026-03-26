@@ -40,7 +40,6 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-
 # ── Config ────────────────────────────────────────────────────────────────────
 
 
@@ -74,9 +73,7 @@ def _extract_code_block(text: str, language: str) -> str | None:
     stripped = text.strip()
     if language == "json" and (stripped.startswith("{") or stripped.startswith("[")):
         return stripped
-    if language == "python" and (
-        stripped.startswith("def ") or stripped.startswith("class ")
-    ):
+    if language == "python" and (stripped.startswith("def ") or stripped.startswith("class ")):
         return stripped
     return None
 
@@ -102,23 +99,19 @@ def compute_reward(completion: str, task_type: str) -> float:
 
 DEMO_PROMPTS = [
     {
-        "system": "You are a helpful assistant that generates valid JSON. "
-        "Respond ONLY with a JSON code block.",
+        "system": "You are a helpful assistant that generates valid JSON. " "Respond ONLY with a JSON code block.",
         "user": 'Generate a JSON object with keys "name" (string), "age" (integer), "active" (boolean).',
         "task_type": "json",
     },
     {
         "system": "You are a helpful assistant that generates valid Python code. "
         "Respond ONLY with a Python code block.",
-        "user": "Write a Python function called `factorial` that takes an integer n "
-        "and returns the factorial of n.",
+        "user": "Write a Python function called `factorial` that takes an integer n " "and returns the factorial of n.",
         "task_type": "python",
     },
     {
-        "system": "You are a helpful assistant that generates valid JSON. "
-        "Respond ONLY with a JSON code block.",
-        "user": "Generate a JSON array of 3 objects, each with keys "
-        '"id" (integer) and "value" (string).',
+        "system": "You are a helpful assistant that generates valid JSON. " "Respond ONLY with a JSON code block.",
+        "user": "Generate a JSON array of 3 objects, each with keys " '"id" (integer) and "value" (string).',
         "task_type": "json",
     },
     {
@@ -138,8 +131,8 @@ DEMO_PROMPTS = [
 def generate_completions(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
-    prompt_ids: torch.Tensor,      # (B, L_prompt)
-    attention_mask: torch.Tensor,   # (B, L_prompt)
+    prompt_ids: torch.Tensor,  # (B, L_prompt)
+    attention_mask: torch.Tensor,  # (B, L_prompt)
     cfg: GRPOConfig,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample G completions per prompt using multinomial sampling.
@@ -163,7 +156,7 @@ def generate_completions(
     cur_mask = attn_mask_rep
 
     for step in range(cfg.max_completion_tokens):
-        outputs = model(
+        outputs = model(  # type: ignore[operator]
             input_ids=input_ids,
             attention_mask=cur_mask,
             past_key_values=past_key_values,
@@ -179,9 +172,7 @@ def generate_completions(
 
         # Prepare for next step (only feed the new token thanks to KV cache)
         input_ids = next_token
-        cur_mask = torch.cat(
-            [cur_mask, torch.ones(B * G, 1, device=device, dtype=cur_mask.dtype)], dim=1
-        )
+        cur_mask = torch.cat([cur_mask, torch.ones(B * G, 1, device=device, dtype=cur_mask.dtype)], dim=1)
 
         # Stop if ALL sequences have hit EOS
         all_done = (next_token.squeeze(-1) == tokenizer.eos_token_id).all()
@@ -190,7 +181,6 @@ def generate_completions(
 
     # Stack into (B*G, T_generated)
     completion_ids = torch.cat(generated, dim=1)
-    T = completion_ids.shape[1]
 
     # Build mask: tokens after EOS are padding
     comp_mask = torch.ones_like(completion_ids, dtype=torch.float32)
@@ -205,10 +195,10 @@ def generate_completions(
 
 def compute_log_probs(
     model: AutoModelForCausalLM,
-    prompt_ids: torch.Tensor,      # (N, L_prompt)
+    prompt_ids: torch.Tensor,  # (N, L_prompt)
     completion_ids: torch.Tensor,  # (N, L_comp)
-    prompt_mask: torch.Tensor,     # (N, L_prompt)
-    comp_mask: torch.Tensor,       # (N, L_comp)
+    prompt_mask: torch.Tensor,  # (N, L_prompt)
+    comp_mask: torch.Tensor,  # (N, L_comp)
 ) -> torch.Tensor:
     """Compute per-token log probabilities of the completion under the model.
 
@@ -219,7 +209,7 @@ def compute_log_probs(
     input_ids = torch.cat([prompt_ids, completion_ids], dim=1)  # (N, L_p + L_c)
     attn_mask = torch.cat([prompt_mask, comp_mask], dim=1)
 
-    outputs = model(input_ids=input_ids, attention_mask=attn_mask)
+    outputs = model(input_ids=input_ids, attention_mask=attn_mask)  # type: ignore[operator]
     logits = outputs.logits  # (N, L_p + L_c, vocab)
 
     # We want the logits that predict each completion token:
@@ -231,19 +221,17 @@ def compute_log_probs(
     log_probs = F.log_softmax(comp_logits, dim=-1)  # (N, L_c, vocab)
 
     # Gather the log prob of the actual completion tokens
-    token_log_probs = log_probs.gather(
-        dim=2, index=completion_ids.unsqueeze(-1)
-    ).squeeze(-1)  # (N, L_c)
+    token_log_probs = log_probs.gather(dim=2, index=completion_ids.unsqueeze(-1)).squeeze(-1)  # (N, L_c)
 
     return token_log_probs
 
 
 def grpo_loss(
-    policy_log_probs: torch.Tensor,      # (B*G, T) — current policy
-    old_policy_log_probs: torch.Tensor,   # (B*G, T) — old policy (for ratio)
-    ref_log_probs: torch.Tensor,          # (B*G, T) — reference model (for KL)
-    advantages: torch.Tensor,             # (B*G,)   — group-normalized advantages
-    comp_mask: torch.Tensor,              # (B*G, T) — completion mask
+    policy_log_probs: torch.Tensor,  # (B*G, T) — current policy
+    old_policy_log_probs: torch.Tensor,  # (B*G, T) — old policy (for ratio)
+    ref_log_probs: torch.Tensor,  # (B*G, T) — reference model (for KL)
+    advantages: torch.Tensor,  # (B*G,)   — group-normalized advantages
+    comp_mask: torch.Tensor,  # (B*G, T) — completion mask
     clip_eps: float = 0.2,
     beta: float = 0.04,
 ) -> torch.Tensor:
@@ -254,30 +242,30 @@ def grpo_loss(
     """
     # ── 1. Per-token importance ratio ──
     # ratio_t = π_θ(y_t) / π_θ_old(y_t) = exp(log π_θ - log π_θ_old)
-    log_ratio = policy_log_probs - old_policy_log_probs       # (B*G, T)
-    ratio = torch.exp(log_ratio)                              # (B*G, T)
+    log_ratio = policy_log_probs - old_policy_log_probs  # (B*G, T)
+    ratio = torch.exp(log_ratio)  # (B*G, T)
 
     # ── 2. Clipped surrogate (PPO-style) ──
     # advantages shape: (B*G,) → broadcast to (B*G, T)
-    adv = advantages.unsqueeze(1)                              # (B*G, 1)
-    surr1 = ratio * adv                                        # (B*G, T)
+    adv = advantages.unsqueeze(1)  # (B*G, 1)
+    surr1 = ratio * adv  # (B*G, T)
     surr2 = torch.clamp(ratio, 1 - clip_eps, 1 + clip_eps) * adv
-    clipped_obj = torch.min(surr1, surr2)                      # (B*G, T)
+    clipped_obj = torch.min(surr1, surr2)  # (B*G, T)
 
     # ── 3. KL penalty against the reference policy (per-token approx.) ──
     # Approximate KL: KL ≈ exp(log π_ref - log π_θ) - (log π_ref - log π_θ) - 1
     # This is the "reverse KL approximation" used in the GRPO paper
-    log_ratio_ref = ref_log_probs - policy_log_probs           # (B*G, T)
+    log_ratio_ref = ref_log_probs - policy_log_probs  # (B*G, T)
     kl_per_token = torch.exp(log_ratio_ref) - log_ratio_ref - 1  # (B*G, T)
 
     # ── 4. Per-token objective: clipped_advantage - β * KL ──
-    per_token_obj = clipped_obj - beta * kl_per_token          # (B*G, T)
+    per_token_obj = clipped_obj - beta * kl_per_token  # (B*G, T)
 
     # ── 5. Mask and average ──
     # Average over valid tokens per sequence, then over all sequences
-    masked_obj = per_token_obj * comp_mask                     # (B*G, T)
-    seq_lengths = comp_mask.sum(dim=1).clamp(min=1)            # (B*G,)
-    per_seq_obj = masked_obj.sum(dim=1) / seq_lengths          # (B*G,)
+    masked_obj = per_token_obj * comp_mask  # (B*G, T)
+    seq_lengths = comp_mask.sum(dim=1).clamp(min=1)  # (B*G,)
+    per_seq_obj = masked_obj.sum(dim=1) / seq_lengths  # (B*G,)
 
     # Loss = negative objective (we minimize)
     loss = -per_seq_obj.mean()
@@ -303,8 +291,8 @@ def compute_group_advantages(rewards: torch.Tensor, group_size: int) -> torch.Te
     grouped = rewards.view(B, group_size)
 
     # Normalize within each group
-    mean = grouped.mean(dim=1, keepdim=True)     # (B, 1)
-    std = grouped.std(dim=1, keepdim=True)        # (B, 1)
+    mean = grouped.mean(dim=1, keepdim=True)  # (B, 1)
+    std = grouped.std(dim=1, keepdim=True)  # (B, 1)
     advantages = (grouped - mean) / (std + 1e-8)  # (B, G)
 
     return advantages.view(-1)  # (B*G,)
@@ -326,14 +314,14 @@ def train(cfg: GRPOConfig) -> None:
     tokenizer.padding_side = "left"
 
     # Active policy π_θ (will be updated)
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name, dtype=torch.bfloat16, trust_remote_code=True
-    ).to(device)
+    model = AutoModelForCausalLM.from_pretrained(cfg.model_name, dtype=torch.bfloat16, trust_remote_code=True).to(
+        device
+    )
 
     # Reference policy π_ref (frozen copy — never updated)
-    ref_model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name, dtype=torch.bfloat16, trust_remote_code=True
-    ).to(device)
+    ref_model = AutoModelForCausalLM.from_pretrained(cfg.model_name, dtype=torch.bfloat16, trust_remote_code=True).to(
+        device
+    )
     ref_model.eval()
     for p in ref_model.parameters():
         p.requires_grad = False
@@ -367,9 +355,7 @@ def train(cfg: GRPOConfig) -> None:
                 {"role": "user", "content": item["user"]},
             ]
             if hasattr(tokenizer, "apply_chat_template"):
-                text = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
+                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             else:
                 text = f"{item['system']}\n{item['user']}\n"
             chat_prompts.append(text)
@@ -383,7 +369,7 @@ def train(cfg: GRPOConfig) -> None:
             max_length=cfg.max_prompt_tokens,
         ).to(device)
 
-        prompt_ids = encoded["input_ids"]       # (B, L_p)
+        prompt_ids = encoded["input_ids"]  # (B, L_p)
         prompt_mask = encoded["attention_mask"]  # (B, L_p)
         B = prompt_ids.shape[0]
         G = cfg.group_size
@@ -393,9 +379,7 @@ def train(cfg: GRPOConfig) -> None:
         # ══════════════════════════════════════════════════════════════════════
         model.eval()
         with torch.no_grad():
-            completion_ids, comp_mask = generate_completions(
-                model, tokenizer, prompt_ids, prompt_mask, cfg
-            )
+            completion_ids, comp_mask = generate_completions(model, tokenizer, prompt_ids, prompt_mask, cfg)
         # completion_ids: (B*G, T_comp), comp_mask: (B*G, T_comp)
 
         # Expand prompt tensors to match (B*G, L_p)
@@ -427,25 +411,19 @@ def train(cfg: GRPOConfig) -> None:
         # ══════════════════════════════════════════════════════════════════════
         model.eval()
         with torch.no_grad():
-            old_log_probs = compute_log_probs(
-                model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask
-            )
+            old_log_probs = compute_log_probs(model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask)
 
         # ══════════════════════════════════════════════════════════════════════
         # STEP 5: Compute log-probs under REFERENCE policy (for KL penalty)
         # ══════════════════════════════════════════════════════════════════════
         with torch.no_grad():
-            ref_lp = compute_log_probs(
-                ref_model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask
-            )
+            ref_lp = compute_log_probs(ref_model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask)
 
         # ══════════════════════════════════════════════════════════════════════
         # STEP 6: Compute log-probs under CURRENT policy (for gradient)
         # ══════════════════════════════════════════════════════════════════════
         model.train()
-        cur_log_probs = compute_log_probs(
-            model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask
-        )
+        cur_log_probs = compute_log_probs(model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask)
 
         # ══════════════════════════════════════════════════════════════════════
         # STEP 7: Compute GRPO loss and backpropagate
