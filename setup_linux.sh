@@ -15,7 +15,7 @@ echo "✅ uv installato"
 # Step 2: Installa dipendenze + progetto in editable mode (nel Python di sistema)
 echo ""
 echo "📦 Installazione dipendenze + progetto..."
-uv pip install --system -e .
+uv pip install --system -e ".[fast]"
 echo "✅ Dipendenze installate + progetto in editable mode"
 
 # Step 3: Verifica installazione
