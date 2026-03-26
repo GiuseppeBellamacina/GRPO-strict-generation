@@ -162,8 +162,7 @@ def _load_with_unsloth(config: dict) -> tuple[Any, Any]:
     if lora_cfg:
         target_modules = lora_cfg.get(
             "target_modules",
-            ["q_proj", "k_proj", "v_proj", "o_proj",
-             "gate_proj", "up_proj", "down_proj"],
+            ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         )
         model = FastLanguageModel.get_peft_model(
             model,

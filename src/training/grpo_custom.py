@@ -458,7 +458,7 @@ def train(cfg: GRPOConfig) -> None:
                 f"Advantages std: {advantages.std().item():.3f}"
             )
 
-    print("\n✓ Training complete.")
+    print("\nTraining complete.")
     print("This was an educational demo — for real training, use grpo_train.py with trl.")
 
 

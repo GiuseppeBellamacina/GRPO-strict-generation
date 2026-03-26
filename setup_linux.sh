@@ -41,33 +41,33 @@ if torch.cuda.is_available():
 print(f'\n📦 Librerie:')
 try:
     import transformers
-    print(f'   ✓ Transformers: {transformers.__version__}')
-except: print('   ✗ Transformers NON installato')
+    print(f'   Transformers: {transformers.__version__}')
+except: print('   Transformers NON installato')
 
 try:
     import trl
-    print(f'   ✓ TRL: {trl.__version__}')
-except: print('   ✗ TRL NON installato')
+    print(f'   TRL: {trl.__version__}')
+except: print('   TRL NON installato')
 
 try:
     import peft
-    print(f'   ✓ PEFT: {peft.__version__}')
-except: print('   ✗ PEFT NON installato')
+    print(f'   PEFT: {peft.__version__}')
+except: print('   PEFT NON installato')
 
 try:
     import datasets
-    print(f'   ✓ Datasets: {datasets.__version__}')
-except: print('   ✗ Datasets NON installato')
+    print(f'   Datasets: {datasets.__version__}')
+except: print('   Datasets NON installato')
 
 try:
     import accelerate
-    print(f'   ✓ Accelerate: {accelerate.__version__}')
-except: print('   ✗ Accelerate NON installato')
+    print(f'   Accelerate: {accelerate.__version__}')
+except: print('   Accelerate NON installato')
 
 try:
     from src import training, evaluation, datasets as ds
-    print(f'   ✓ src package importabile (editable mode)')
-except: print('   ✗ src package NON importabile')
+    print(f'   src package importabile (editable mode)')
+except: print('   src package NON importabile')
 
 print()
 print('='*60)

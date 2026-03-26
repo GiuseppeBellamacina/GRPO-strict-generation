@@ -59,38 +59,38 @@ if torch.cuda.is_available():
 print(f'\n📦 Librerie:')
 try:
     import transformers
-    print(f'   ✓ Transformers: {transformers.__version__}')
+    print(f'   Transformers: {transformers.__version__}')
 except: pass
 
 try:
     import trl
-    print(f'   ✓ TRL: {trl.__version__}')
+    print(f'   TRL: {trl.__version__}')
 except: pass
 
 try:
     import peft
-    print(f'   ✓ PEFT: {peft.__version__}')
+    print(f'   PEFT: {peft.__version__}')
 except: pass
 
 try:
     import datasets
-    print(f'   ✓ Datasets: {datasets.__version__}')
+    print(f'   Datasets: {datasets.__version__}')
 except: pass
 
 try:
     import accelerate
-    print(f'   ✓ Accelerate: {accelerate.__version__}')
+    print(f'   Accelerate: {accelerate.__version__}')
 except: pass
 
 try:
     import tensorboard
-    print(f'   ✓ TensorBoard installato')
+    print(f'   TensorBoard installato')
 except: pass
 
 try:
     from src import training, evaluation, datasets as ds
-    print(f'   ✓ src package importabile (editable mode)')
-except: print(f'   ✗ src package NON importabile')
+    print(f'   src package importabile (editable mode)')
+except: print(f'   src package NON importabile')
 
 print('\n' + '='*60)
 "@
