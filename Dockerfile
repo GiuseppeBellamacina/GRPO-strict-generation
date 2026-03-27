@@ -28,7 +28,7 @@ ENV PATH="/workspace/.venv/bin:$PATH" \
     VIRTUAL_ENV="/workspace/.venv"
 
 # Install project dependencies via setup.sh (cached layer)
-COPY pyproject.toml uv.lock* setup.sh ./
+COPY pyproject.toml uv.lock* setup.sh README.md ./
 RUN bash setup.sh
 
 # Default: interactive shell

@@ -47,9 +47,6 @@ dev = [
 ]
 fast = [
     "unsloth",
-]
-vllm = [
-    "unsloth",
     "vllm",
 ]
 

@@ -6,6 +6,9 @@ __pycache__/
 dist/
 build/
 
+# pytest
+.pytest_cache/
+
 # Virtual env
 .venv/
 
@@ -22,7 +25,7 @@ build/
 .ruff_cache/
 
 # Data & artifacts
-data/
+data/synthetic/
 
 # Experiments
 experiments/logs/

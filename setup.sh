@@ -17,13 +17,13 @@ else
 fi
 
 # Step 2: Installa dipendenze + progetto in editable mode
-# Se esiste un virtualenv attivo lo usa, altrimenti installa nel system python
+# Docker (venv attivo): dev + fast | Colab (system python): solo fast
 echo ""
 echo "📦 Installazione dipendenze + progetto..."
 if [ -n "$VIRTUAL_ENV" ]; then
-    uv pip install -e ".[dev,vllm]" 2>/dev/null || uv pip install -e ".[dev,fast]"
+    uv pip install -e ".[dev,fast]"
 else
-    uv pip install --system -e ".[vllm]"
+    uv pip install --system -e ".[fast]"
 fi
 echo "✅ Dipendenze installate + progetto in editable mode"
 
