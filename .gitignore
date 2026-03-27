@@ -15,7 +15,7 @@ build/
 # Jupyter
 .ipynb_checkpoints/
 
-# Env & secrets
+# secrets
 .env
 
 # Logs

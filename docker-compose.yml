@@ -1,15 +1,15 @@
 # docker-compose.yml — GPU-enabled dev container for GRPO training.
 # Usage:
-#   docker compose up -d        → start container
-#   docker compose exec dev bash → open shell
-#   docker compose down          → stop
+#   docker compose up -d          --> start container
+#   docker compose exec dev bash  --> open shell
+#   docker compose down           --> stop
 
 services:
   dev:
     build: .
     container_name: grpo-dev
     volumes:
-      - .:/workspace # bind-mount: edits sync to host
+      - .:/workspace
     working_dir: /workspace
     stdin_open: true
     tty: true

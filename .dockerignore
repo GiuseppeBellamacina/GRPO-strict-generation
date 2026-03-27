@@ -1,16 +1,50 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# pytest
+.pytest_cache/
+
+# Virtual env
+.venv/
+
+# secrets
+.env
+
+# Git
 .git/
 .gitignore
-.env
+.gitattributes
+
+# Logs & tracking
 *.log
 wandb/
 runs/
+
+# Linting & formatting
+.ruff_cache/
+
+# Data
+data/
+
+# Experiments
 experiments/logs/
 experiments/checkpoints/
+
+# Pesi modelli
 *.pt
 *.bin
 *.safetensors
 *.ckpt
+
+# Notebook di riferimento
 notebooks/reference/
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp

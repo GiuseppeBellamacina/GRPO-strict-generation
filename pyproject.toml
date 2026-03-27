@@ -63,7 +63,6 @@ target-version = "py312"
 extend-include = ["*.ipynb"]
 exclude = ["notebooks/reference/**"]
 
-# Force pydantic >=1.10.18 to fix ForwardRef._evaluate on Python 3.12.4+
 [tool.uv]
 constraint-dependencies = ["pydantic>=1.10.18"]
 

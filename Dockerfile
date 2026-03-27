@@ -22,14 +22,14 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # Working directory — bind-mounted at runtime
 WORKDIR /workspace
 
-# Create venv and put it on PATH
-RUN uv venv /workspace/.venv
-ENV PATH="/workspace/.venv/bin:$PATH" \
-    VIRTUAL_ENV="/workspace/.venv"
+# Create venv OUTSIDE /workspace (bind mount sovrascrive /workspace a runtime)
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    VIRTUAL_ENV="/opt/venv"
 
-# Install project dependencies via setup.sh (cached layer)
+# Install project dependencies via setup.sh (cache uv per rebuild veloci)
 COPY pyproject.toml uv.lock* setup.sh README.md ./
-RUN bash setup.sh
+RUN --mount=type=cache,target=/root/.cache/uv bash setup.sh
 
 # Default: interactive shell
 CMD ["bash"]
