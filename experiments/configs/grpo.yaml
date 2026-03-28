@@ -7,7 +7,7 @@ model:
   use_unsloth: true
   fast_inference: true # vLLM backend per generazione veloce
   max_seq_length: 2048
-  gpu_memory_utilization: 0.9
+  gpu_memory_utilization: 0.75 # standby mode richiede ~0.75 su T4 (0.9 causa OOM)
 
 lora:
   r: 16
