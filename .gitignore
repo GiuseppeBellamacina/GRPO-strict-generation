@@ -12,6 +12,9 @@ build/
 # Virtual env
 .venv/
 
+# Unsloth
+unsloth_compiled_cache/
+
 # Jupyter
 .ipynb_checkpoints/
 

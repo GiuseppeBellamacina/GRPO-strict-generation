@@ -4,6 +4,8 @@
 #   docker compose exec dev bash  --> open shell
 #   docker compose down           --> stop
 
+name: grpo-strict-generation
+
 services:
   dev:
     build: .
@@ -23,3 +25,4 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - UV_PROJECT_ENVIRONMENT=/opt/venv

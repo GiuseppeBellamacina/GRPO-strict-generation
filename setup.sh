@@ -1,12 +1,22 @@
 #!/bin/bash
-# Setup per Google Colab / Docker / Linux remoto
-# Installa dipendenze + progetto in editable mode
+# Setup per Google Colab / Linux remoto (NON usato dalla build Docker)
+# In Docker i pacchetti sono già nel venv /opt/venv.
+# Su Colab: installa uv + dipendenze nel system python.
 
 set -e
 
 echo "=== Setup GRPO Strict Generation ==="
 
-# Step 1: Installa uv se non presente
+# Se siamo in Docker con il venv già pronto, skip
+if [ -n "$VIRTUAL_ENV" ] && python3 -c "import torch" 2>/dev/null; then
+    echo "✅ Ambiente Docker già configurato ($VIRTUAL_ENV)"
+    echo "   Installo solo il progetto in editable mode..."
+    uv pip install --no-deps -e .
+    echo "✅ Done"
+    exit 0
+fi
+
+# Step 1: Installa uv se non presente (Colab)
 echo ""
 if command -v uv &> /dev/null; then
     echo "✅ uv già installato"
@@ -16,15 +26,10 @@ else
     echo "✅ uv installato"
 fi
 
-# Step 2: Installa dipendenze + progetto in editable mode
-# Docker (venv attivo): dev + fast | Colab (system python): solo fast
+# Step 2: Installa dipendenze + progetto in editable mode (Colab)
 echo ""
 echo "📦 Installazione dipendenze + progetto..."
-if [ -n "$VIRTUAL_ENV" ]; then
-    uv pip install -e ".[dev,fast]"
-else
-    uv pip install --system -e ".[fast]"
-fi
+uv pip install --system -e ".[fast]"
 echo "✅ Dipendenze installate + progetto in editable mode"
 
 # Step 3: Verifica installazione

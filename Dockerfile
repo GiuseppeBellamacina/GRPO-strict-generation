@@ -25,11 +25,13 @@ WORKDIR /workspace
 # Create venv OUTSIDE /workspace (bind mount sovrascrive /workspace a runtime)
 RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
-    VIRTUAL_ENV="/opt/venv"
+    VIRTUAL_ENV="/opt/venv" \
+    UV_PROJECT_ENVIRONMENT="/opt/venv"
 
-# Install project dependencies via setup.sh (cache uv per rebuild veloci)
-COPY pyproject.toml uv.lock* setup.sh README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv bash setup.sh
+# Install project dependencies (no editable: src viene dal bind mount a runtime)
+COPY pyproject.toml uv.lock* README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -e ".[dev,fast]"
 
 # Default: interactive shell
 CMD ["bash"]

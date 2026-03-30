@@ -17,7 +17,7 @@ dependencies = [
     # Core ML
     "torch",
     "transformers",
-    "trl==0.22.2",
+    "trl==0.24.0",
     "peft",
     "datasets",
     "accelerate",
@@ -46,8 +46,8 @@ dev = [
     "pytest",
 ]
 fast = [
-    "unsloth",
-    "vllm",
+    "unsloth==2026.3.17",
+    "vllm==0.18.0",
 ]
 
 [tool.isort]
