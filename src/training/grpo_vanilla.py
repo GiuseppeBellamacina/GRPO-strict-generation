@@ -75,7 +75,7 @@ def _extract_code_block(text: str, language: str) -> str | None:
     return None
 
 
-def compute_reward(completion: str, task_type: str) -> float:
+def compute_reward(completion: str) -> float:
     """Binary reward: 1.0 if the JSON parses, 0.0 otherwise."""
     code = _extract_code_block(completion, "json")
     if code is None:
@@ -94,23 +94,19 @@ DEMO_PROMPTS = [
     {
         "system": "You are a helpful assistant that generates valid JSON. " "Respond ONLY with a JSON code block.",
         "user": 'Generate a JSON object with keys "name" (string), "age" (integer), "active" (boolean).',
-        "task_type": "json",
     },
     {
         "system": "You are a helpful assistant that generates valid JSON. " "Respond ONLY with a JSON code block.",
         "user": "Generate a JSON array of 3 objects, each with keys " '"id" (integer) and "value" (string).',
-        "task_type": "json",
     },
     {
         "system": "You are a helpful assistant that generates valid JSON. " "Respond ONLY with a JSON code block.",
         "user": 'Generate a JSON object representing a user profile with "username" (string), '
         '"email" (string), "age" (integer), and "is_active" (boolean).',
-        "task_type": "json",
     },
     {
         "system": "You are a helpful assistant that generates valid JSON. " "Respond ONLY with a JSON code block.",
         "user": 'Generate a JSON object with a "title" (string) and a "tags" key ' "containing an array of 4 strings.",
-        "task_type": "json",
     },
 ]
 
@@ -339,7 +335,6 @@ def train(cfg: GRPOConfig) -> None:
 
         # Tokenize prompts using chat template
         chat_prompts = []
-        task_types = []
         for item in batch:
             messages = [
                 {"role": "system", "content": item["system"]},
@@ -350,7 +345,6 @@ def train(cfg: GRPOConfig) -> None:
             else:
                 text = f"{item['system']}\n{item['user']}\n"
             chat_prompts.append(text)
-            task_types.append(item["task_type"])
 
         encoded = tokenizer(
             chat_prompts,
@@ -383,9 +377,7 @@ def train(cfg: GRPOConfig) -> None:
         rewards = []
         decoded_completions = tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
         for g_idx in range(B * G):
-            prompt_idx = g_idx // G
-            tt = task_types[prompt_idx]
-            r = compute_reward(decoded_completions[g_idx], tt)
+            r = compute_reward(decoded_completions[g_idx])
             rewards.append(r)
         rewards_t = torch.tensor(rewards, device=device, dtype=torch.float32)
 

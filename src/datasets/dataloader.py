@@ -79,7 +79,6 @@ def prepare_grpo_dataset(ds: Any, tokenizer: Any = None) -> list[dict[str, str]]
         rows.append(
             {
                 "prompt": prompt_text,
-                "task_type": sample["task_type"],
                 "difficulty": sample["difficulty"],
             }
         )
@@ -105,5 +104,5 @@ def prepare_sft_dataset(ds: Any, gold_completions: list[str], tokenizer: Any = N
                 parts.append(f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>")
             text = "\n".join(parts)
 
-        rows.append({"text": text, "task_type": sample["task_type"]})
+        rows.append({"text": text})
     return rows

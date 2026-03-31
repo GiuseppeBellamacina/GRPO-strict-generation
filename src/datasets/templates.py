@@ -440,9 +440,9 @@ HARD: list[Template] = [
 # ---------------------------------------------------------------------------
 
 POOLS: dict[str, dict[str, str | list[Template]]] = {
-    "json_simple": {"templates": SIMPLE, "task_type": "json", "difficulty": "simple"},
-    "json_medium": {"templates": MEDIUM, "task_type": "json", "difficulty": "medium"},
-    "json_hard": {"templates": HARD, "task_type": "json", "difficulty": "hard"},
+    "json_simple": {"templates": SIMPLE, "difficulty": "simple"},
+    "json_medium": {"templates": MEDIUM, "difficulty": "medium"},
+    "json_hard": {"templates": HARD, "difficulty": "hard"},
 }
 
 DIFFICULTY_WEIGHTS: dict[str, float] = {

@@ -22,7 +22,6 @@ def _build_system_prompt(thinking: bool = True) -> str:
     """Build the system prompt instructing the model to output valid JSON.
 
     Args:
-        task_type: Unused for now, reserved for future multi-task support.
         thinking: If True, the model is asked to reason in <think>...</think>
             before producing the JSON block. If False, only the JSON block is
             expected (stricter, no chain-of-thought).

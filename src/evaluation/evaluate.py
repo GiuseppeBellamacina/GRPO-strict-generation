@@ -12,7 +12,7 @@ from typing import Any
 from src.training.rewards import extract_code_block
 
 
-def check_syntax(completion: str, task_type: str = "json") -> tuple[bool, str]:
+def check_syntax(completion: str) -> tuple[bool, str]:
     """Check if a completion contains syntactically valid JSON.
 
     Returns:
@@ -32,14 +32,12 @@ def check_syntax(completion: str, task_type: str = "json") -> tuple[bool, str]:
 
 def pass_at_k(
     completions_per_prompt: list[list[str]],
-    task_types: list[str],
     k_values: list[int] | tuple[int, ...] = (1, 5, 10),
 ) -> dict[str, float]:
     """Compute Pass@k metrics.
 
     Args:
         completions_per_prompt: For each prompt, a list of k completions.
-        task_types: Task type for each prompt (always "json").
         k_values: List of k values to compute.
 
     Returns:
@@ -50,10 +48,10 @@ def pass_at_k(
 
     for k in k_values:
         passes = 0
-        for comps, tt in zip(completions_per_prompt, task_types):
+        for comps in completions_per_prompt:
             # Take first k completions (or all if fewer)
             subset = comps[:k]
-            if any(check_syntax(c, tt)[0] for c in subset):
+            if any(check_syntax(c)[0] for c in subset):
                 passes += 1
         results[f"pass@{k}"] = passes / max(n_prompts, 1)
 
@@ -62,14 +60,12 @@ def pass_at_k(
 
 def compute_detailed_metrics(
     completions: list[str],
-    task_types: list[str],
     difficulties: list[str],
 ) -> dict[str, Any]:
     """Compute detailed evaluation metrics.
 
     Args:
         completions: One completion per prompt.
-        task_types: Task type for each prompt.
         difficulties: Difficulty level for each prompt.
 
     Returns:
@@ -80,13 +76,11 @@ def compute_detailed_metrics(
     valid_count = 0
     error_types: Counter = Counter()
 
-    # Per task_type and difficulty
     type_counts: dict[str, dict[str, int]] = {}
 
-    for comp, tt, diff in zip(completions, task_types, difficulties):
-        is_valid, error_msg = check_syntax(comp, tt)
-
-        key = f"{tt}/{diff}"
+    for comp, diff in zip(completions, difficulties):
+        is_valid, error_msg = check_syntax(comp)
+        key = f"{diff}"
         type_counts.setdefault(key, {"total": 0, "valid": 0})
         type_counts[key]["total"] += 1
 

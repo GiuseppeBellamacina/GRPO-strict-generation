@@ -121,7 +121,6 @@ def main() -> None:
 
     # Format prompts
     prompts = [format_prompt_for_model(test_ds[i], tokenizer) for i in range(len(test_ds))]
-    task_types = test_ds["task_type"]
     difficulties = test_ds["difficulty"]
 
     num_seqs = gen_cfg.get("num_return_sequences", 1)
@@ -140,7 +139,7 @@ def main() -> None:
     # Only compute pass@k for k <= num_return_sequences
     valid_k = [k for k in k_values if k <= num_seqs]
     if valid_k:
-        pass_k = pass_at_k(completions_per_prompt, task_types, valid_k)
+        pass_k = pass_at_k(completions_per_prompt, valid_k)
         print("\nPass@k results:")
         for metric, value in pass_k.items():
             print(f"  {metric}: {value:.4f}")
@@ -149,7 +148,7 @@ def main() -> None:
 
     # Detailed metrics (using first completion per prompt)
     first_completions = [comps[0] for comps in completions_per_prompt]
-    detailed = compute_detailed_metrics(first_completions, task_types, difficulties)
+    detailed = compute_detailed_metrics(first_completions, difficulties)
 
     print(f"\nOverall Pass@1: {detailed['overall_pass_rate']:.4f}")
     print("\nPer-category breakdown:")
@@ -182,7 +181,6 @@ def main() -> None:
         completion_records.append(
             {
                 "prompt": prompts[i],
-                "task_type": task_types[i],
                 "difficulty": difficulties[i],
                 "completions": comps,
             }
