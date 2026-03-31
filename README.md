@@ -34,9 +34,14 @@ src/
   utils/             Config loader and visualization helpers
 experiments/
   configs/           YAML configs for baseline, GRPO, and SFT
-notebooks/           Colab notebooks (full pipeline + reference implementations)
-docs/                Final report (REPORT.md)
-figures/             Generated plots and charts
+  logs/              Training logs and wandb offline runs
+    <run_name>/
+      figures/       Figures generated during/after evaluation
+  checkpoints/       Saved LoRA adapters and trainer state
+    <run_name>/
+      figures/       Comparison figures for that experiment
+notes/               Colab notebooks (full pipeline + reference implementations)
+docs/                Final report and cluster guide
 data/                Synthetic dataset (generated, not committed)
 ```
 
@@ -114,6 +119,25 @@ uv run python -m src.training \
 ```bash
 uv run python -m src.evaluation.evaluate --config experiments/configs/grpo.yaml
 ```
+
+### 5. Sync with Cluster (Windows)
+
+Use `sync_cluster.ps1` in the repo root to transfer files to/from the DMI UniCT GPU cluster:
+
+```powershell
+# Upload project files
+.\sync_cluster.ps1 -Action upload
+
+# Download all results after training
+.\sync_cluster.ps1 -Action download
+
+# Selectively download
+.\sync_cluster.ps1 -Action download-logs          # experiments/logs/ (includes figures)
+.\sync_cluster.ps1 -Action download-checkpoints   # experiments/checkpoints/
+.\sync_cluster.ps1 -Action download-wandb         # wandb/ offline runs
+```
+
+See [docs/CLUSTER.md](docs/CLUSTER.md) for full cluster setup instructions.
 
 ### 5. Multi-GPU Training
 

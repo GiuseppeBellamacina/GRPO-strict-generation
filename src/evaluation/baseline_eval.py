@@ -219,27 +219,7 @@ def main() -> None:
     )
     print(f"Completions saved to {completions_path}")
 
-    # Log to wandb
-    wandb_metrics: dict[str, float] = {}
-    for k_metric, v_metric in pass_k.items():
-        wandb_metrics[k_metric] = v_metric
-    wandb_metrics["overall_pass_rate"] = detailed["overall_pass_rate"]
-    for cat, stats in detailed["per_category"].items():
-        wandb_metrics[f"pass_rate/{cat}"] = stats["pass_rate"]
-
-    # Bar chart + scalari per wandb
-    table_data = [[k, v] for k, v in wandb_metrics.items()]
-    bar_table = wandb.Table(data=table_data, columns=["metric", "value"])
-    wandb.log(
-        {
-            "eval/pass_rates": wandb.plot.bar(
-                bar_table, "metric", "value", title="Evaluation Pass Rates"
-            ),
-            **wandb_metrics,
-        }
-    )
-
-    # ── Save comparison figure ────────────────────────────────────────
+    # Log to wandb — solo la figura verticale, niente scalari sparsi
     categories = list(detailed["per_category"].keys())
     cat_rates = [detailed["per_category"][c]["pass_rate"] for c in categories]
     fig, ax = plt.subplots(figsize=(max(6, len(categories) * 1.2), 4))
@@ -250,10 +230,11 @@ def main() -> None:
     for i, v in enumerate(cat_rates):
         ax.text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=9)
     fig.tight_layout()
-    figures_dir = Path("figures")
+    figures_dir = output_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
     fig_path = figures_dir / "baseline_eval_pass_rates.png"
     fig.savefig(fig_path, dpi=150)
+    wandb.log({"eval/pass_rates": wandb.Image(fig)})
     plt.close(fig)
     print(f"Figure saved to {fig_path}")
 

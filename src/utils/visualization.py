@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 
 
 def plot_pass_at_k_comparison(
     results: dict[str, dict[str, float]],
-    output_path: str = "figures/pass_at_k_comparison.png",
+    output_path: str = "experiments/logs/figures/pass_at_k_comparison.png",
 ) -> None:
     """Bar chart comparing Pass@k across models/methods.
 
@@ -66,7 +67,7 @@ def plot_pass_at_k_comparison(
 def plot_per_category_breakdown(
     detailed_metrics: dict,
     title: str = "Pass Rate by Task Type and Difficulty",
-    output_path: str = "figures/per_category_breakdown.png",
+    output_path: str = "experiments/logs/figures/per_category_breakdown.png",
 ) -> None:
     """Grouped bar chart of pass rates per category (json/simple, json/hard, etc.)."""
     sns.set_theme(style="whitegrid")
@@ -108,7 +109,7 @@ def plot_per_category_breakdown(
 
 def plot_error_distribution(
     detailed_metrics: dict,
-    output_path: str = "figures/error_distribution.png",
+    output_path: str = "experiments/logs/figures/error_distribution.png",
 ) -> None:
     """Horizontal bar chart of error type distribution."""
     sns.set_theme(style="whitegrid")
@@ -144,11 +145,11 @@ def plot_error_distribution(
 
 def plot_training_reward_curve(
     log_dir: str,
-    output_path: str = "figures/training_reward_curve.png",
+    output_path: str = "experiments/logs/figures/training_reward_curve.png",
 ) -> None:
-    """Plot reward over training steps from tensorboard logs.
+    """Plot reward over training steps from wandb logs.
 
-    Falls back to reading trainer_state.json if tensorboard events aren't available.
+    Falls back to reading trainer_state.json if wandb events aren't available.
     """
     sns.set_theme(style="whitegrid")
     state_path = Path(log_dir).parent / "trainer_state.json"
@@ -198,3 +199,76 @@ def plot_training_reward_curve(
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_path}")
+
+
+def plot_baseline_vs_grpo_comparison(
+    baseline_metrics: dict,
+    grpo_metrics: dict,
+    model_name: str = "",
+    output_path: str = "experiments/logs/figures/baseline_vs_grpo_comparison.png",
+) -> None:
+    """Side-by-side grouped bar + delta chart: baseline vs post-GRPO pass rates.
+
+    Args:
+        baseline_metrics: Output of compute_detailed_metrics for the baseline model.
+        grpo_metrics: Output of compute_detailed_metrics for the post-GRPO model.
+        model_name: Short model name shown in the figure suptitle.
+        output_path: Where to save the figure.
+    """
+    all_cats = sorted(
+        set(
+            list(baseline_metrics["per_category"].keys())
+            + list(grpo_metrics["per_category"].keys())
+        )
+    )
+    labels = ["overall"] + all_cats
+    b_values = [baseline_metrics["overall_pass_rate"]] + [
+        baseline_metrics["per_category"].get(c, {}).get("pass_rate", 0.0)
+        for c in all_cats
+    ]
+    g_values = [grpo_metrics["overall_pass_rate"]] + [
+        grpo_metrics["per_category"].get(c, {}).get("pass_rate", 0.0)
+        for c in all_cats
+    ]
+    deltas = [g - b for g, b in zip(g_values, b_values)]
+
+    x = np.arange(len(labels))
+    width = 0.32
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    suptitle = "Baseline vs Post-GRPO"
+    if model_name:
+        suptitle += f" — {model_name}"
+    fig.suptitle(suptitle, fontsize=13, fontweight="bold")
+
+    # ── Grouped bar: pass rate per category ──────────────────────────────────
+    ax = axes[0]
+    bars_b = ax.bar(x - width / 2, b_values, width, label="Baseline", color="#4C72B0", alpha=0.85)
+    bars_g = ax.bar(x + width / 2, g_values, width, label="Post-GRPO", color="#DD8452", alpha=0.85)
+    ax.set_ylim(0, 1.15)
+    ax.set_ylabel("Pass@1")
+    ax.set_title("Pass Rate per Category")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha="right")
+    ax.legend()
+    ax.bar_label(bars_b, fmt="%.2f", padding=3, fontsize=8)
+    ax.bar_label(bars_g, fmt="%.2f", padding=3, fontsize=8)
+    ax.axhline(0, color="black", linewidth=0.5)
+
+    # ── Delta bar: improvement per category ──────────────────────────────────
+    ax2 = axes[1]
+    bar_colors = ["#2ca02c" if d >= 0 else "#d62728" for d in deltas]
+    bars_d = ax2.bar(x, deltas, width * 1.8, color=bar_colors, alpha=0.85)
+    ax2.axhline(0, color="black", linewidth=0.8, linestyle="--")
+    ax2.set_ylabel("Δ Pass@1 (GRPO − Baseline)")
+    ax2.set_title("Delta per Category")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, rotation=20, ha="right")
+    ax2.bar_label(bars_d, fmt="%+.3f", padding=3, fontsize=8)
+
+    fig.tight_layout()
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+

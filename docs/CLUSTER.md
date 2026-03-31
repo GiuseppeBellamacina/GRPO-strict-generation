@@ -55,20 +55,49 @@ La password è quella dell'account universitario (SmartEdu).
 
 ### 2.2. Configura chiave SSH (consigliato)
 
-Evita ban per tentativi di password sbagliati:
+Evita ban per tentativi di password sbagliati.
 
+**Linux / macOS:**
 ```bash
-# Sul tuo PC locale (una volta sola):
 ssh-keygen -t ed25519         # se non hai già una chiave
 ssh-copy-id <codice-fiscale>@gcluster.dmi.unict.it
 ```
 
+**Windows (PowerShell)** — `ssh-copy-id` non è disponibile nativamente:
+```powershell
+# Crea la chiave se non esiste già (controlla prima con Test-Path)
+Test-Path "$env:USERPROFILE\.ssh\id_ed25519"
+
+# Se non esiste:
+ssh-keygen -t ed25519
+
+# Copia la chiave pubblica sul cluster (equivalente di ssh-copy-id):
+Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" | ssh <codice-fiscale>@gcluster.dmi.unict.it "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+Dopodiché `ssh <codice-fiscale>@gcluster.dmi.unict.it` non chiederà più la password.
+
 ### 2.3. Trasferisci il progetto
 
+**Linux / macOS** — con rsync (esclude cartelle pesanti):
 ```bash
-# Dal tuo PC locale:
 rsync -avz --exclude '.venv' --exclude '__pycache__' --exclude '.git/objects' \
     . <codice-fiscale>@gcluster.dmi.unict.it:~/GRPO-strict-generation/
+```
+
+**Windows (PowerShell)** — usa lo script `sync_cluster.ps1` nella root del progetto:
+```powershell
+# Prima crea la struttura remota (una volta sola):
+ssh <codice-fiscale>@gcluster.dmi.unict.it "mkdir -p ~/GRPO-strict-generation/experiments/{configs,logs,checkpoints}"
+
+# Carica il progetto:
+.\sync_cluster.ps1 -Action upload
+
+# Dopo il training, scarica i risultati:
+.\sync_cluster.ps1 -Action download          # tutto (logs + checkpoints + wandb)
+.\sync_cluster.ps1 -Action download-logs        # solo logs e figure
+.\sync_cluster.ps1 -Action download-checkpoints # solo checkpoint LoRA
+.\sync_cluster.ps1 -Action download-wandb       # solo run wandb offline
 ```
 
 Oppure clona direttamente (se sei dottorando con accesso internet):
@@ -79,7 +108,7 @@ git clone https://github.com/GiuseppeBellamacina/GRPO-strict-generation.git
 ```
 
 > **Nota:** Solo i dottorandi hanno accesso a internet. Gli studenti devono
-> trasferire i file via `rsync`/`scp`. Il download di modelli HuggingFace
+> trasferire i file via `scp`/`sync_cluster.ps1`. Il download di modelli HuggingFace
 > e pacchetti pip funziona per tutti.
 
 ### 2.4. Verifica quota disco
@@ -301,12 +330,17 @@ I run vengono salvati localmente in `wandb/` nella directory del progetto.
 
 ### Sincronizzare i risultati dopo il training
 
+**Linux / macOS:**
 ```bash
-# Dal tuo PC locale — scarica i run wandb:
 rsync -avz <username>@gcluster.dmi.unict.it:~/GRPO-strict-generation/wandb/ ./wandb/
-
-# Poi sincronizza su wandb.ai:
 wandb sync wandb/offline-run-*
+```
+
+**Windows (PowerShell):**
+```powershell
+.\sync_cluster.ps1 -Action download-wandb
+# Lo script scarica wandb/ e stampa il comando di sync:
+wandb sync wandb\offline-run-*
 ```
 
 ### Alternativa: usa solo TensorBoard
