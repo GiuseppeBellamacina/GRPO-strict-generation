@@ -44,7 +44,7 @@ echo "Avvio baseline evaluation..."
 echo ""
 
 apptainer run --nv /shared/sifs/latest.sif \
-    python -m src.evaluation.baseline_eval --config "${CONFIG}"
+    python -m src.evaluation --mode baseline --config "${CONFIG}"
 
 echo ""
 echo "============================================"

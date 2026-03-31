@@ -78,7 +78,7 @@ uv run python -m src.datasets.synthetic_dataset \
 Evaluate the off-the-shelf model (no fine-tuning):
 
 ```bash
-uv run python -m src.evaluation.baseline_eval \
+uv run python -m src.evaluation \
     --config experiments/configs/baseline.yaml
 ```
 
@@ -117,7 +117,7 @@ uv run python -m src.training \
 ### 4. Post-Training Evaluation
 
 ```bash
-uv run python -m src.evaluation.evaluate --config experiments/configs/grpo.yaml
+uv run python -m src.evaluation --config experiments/configs/grpo.yaml
 ```
 
 ### 5. Sync with Cluster (Windows)

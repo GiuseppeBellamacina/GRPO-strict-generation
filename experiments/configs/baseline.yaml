@@ -1,7 +1,7 @@
 # ============================================================================
 # Baseline evaluation config — valuta il modello base senza fine-tuning.
 #
-# Usato da:  python -m src.evaluation.baseline_eval --config experiments/configs/baseline.yaml
+# Usato da:  python -m src.evaluation --config experiments/configs/baseline.yaml
 # ============================================================================
 
 # --- Modello ---

@@ -33,13 +33,13 @@ from src.datasets.dataloader import (
     format_prompt_for_model,
     load_synthetic_dataset,
 )
-from src.evaluation.baseline_eval import generate_completions
-from src.evaluation.evaluate import compute_detailed_metrics
+from src.evaluation.eval_baseline import generate_completions
 from src.models.model_loader import load_model_and_tokenizer
 from src.training.callbacks import HighPrecisionLogCallback, WandbAlertCallback
 from src.training.rewards import build_reward_function
 from src.utils.config import load_config
 from src.utils.distributed import is_main_process
+from src.utils.metrics import compute_detailed_metrics
 
 load_dotenv()
 

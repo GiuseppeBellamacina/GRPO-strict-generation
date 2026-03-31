@@ -71,7 +71,7 @@ apptainer run --nv \
     --env WANDB_MODE=offline \
     --env PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8 \
     /shared/sifs/latest.sif \
-    python -m src.evaluation.eval_grpo ${EVAL_ARGS}
+    python -m src.evaluation ${EVAL_ARGS}
 
 echo ""
 echo "============================================"

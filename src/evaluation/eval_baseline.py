@@ -1,7 +1,7 @@
 """Baseline evaluation — test off-the-shelf LLMs without any fine-tuning.
 
 Usage:
-    python -m src.evaluation.baseline_eval --config experiments/configs/baseline.yaml
+    python -m src.evaluation --config experiments/configs/baseline.yaml
 """
 
 from __future__ import annotations
@@ -15,24 +15,24 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import torch
-from dotenv import load_dotenv
-from tqdm import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+import matplotlib.pyplot as plt  # noqa: E402
+import torch  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from tqdm import tqdm  # noqa: E402
+from transformers import PreTrainedModel, PreTrainedTokenizerBase  # noqa: E402
 
-import wandb
-from src.datasets.dataloader import (
+import wandb  # noqa: E402
+from src.datasets.dataloader import (  # noqa: E402
     format_prompt_for_model,
     load_synthetic_dataset,
 )
-from src.evaluation.evaluate import compute_detailed_metrics, pass_at_k
-from src.models.model_loader import (
+from src.models.model_loader import (  # noqa: E402
     load_model,
     load_model_and_tokenizer,
     load_tokenizer,
 )
-from src.utils.config import load_config
+from src.utils.config import load_config  # noqa: E402
+from src.utils.metrics import compute_detailed_metrics, pass_at_k  # noqa: E402
 
 load_dotenv()
 

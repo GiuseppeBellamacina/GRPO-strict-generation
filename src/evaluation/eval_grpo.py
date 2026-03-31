@@ -2,13 +2,13 @@
 
 Usage:
     # Evaluate GRPO model only
-    python -m src.evaluation.eval_grpo --config experiments/configs/grpo_cluster.yaml
+    python -m src.evaluation --config experiments/configs/grpo_cluster.yaml
 
     # Evaluate GRPO model + compare with baseline results
-    python -m src.evaluation.eval_grpo --config experiments/configs/grpo_cluster.yaml --compare
+    python -m src.evaluation --config experiments/configs/grpo_cluster.yaml --compare
 
     # Evaluate a specific checkpoint
-    python -m src.evaluation.eval_grpo --config experiments/configs/grpo_cluster.yaml \
+    python -m src.evaluation --config experiments/configs/grpo_cluster.yaml \
         --checkpoint experiments/checkpoints/grpo/checkpoint-480
 """
 
@@ -30,10 +30,10 @@ from src.datasets.dataloader import (
     format_prompt_for_model,
     load_synthetic_dataset,
 )
-from src.evaluation.baseline_eval import generate_completions
-from src.evaluation.evaluate import compute_detailed_metrics
+from src.evaluation.eval_baseline import generate_completions
 from src.models.model_loader import load_model_and_tokenizer
 from src.utils.config import load_config
+from src.utils.metrics import compute_detailed_metrics
 from src.utils.visualization import (
     plot_baseline_vs_grpo_comparison,
     plot_per_category_breakdown,
