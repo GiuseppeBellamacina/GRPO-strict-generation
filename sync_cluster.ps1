@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("upload", "download", "download-logs", "download-checkpoints", "download-wandb")]
+    [ValidateSet("upload", "download", "download-logs", "download-checkpoints", "download-wandb", "sync-wandb")]
     [string]$Action
 )
 
@@ -147,8 +147,42 @@ function DownloadWandb {
     Write-Host "  -> saved wandb runs to experiments\logs\" -ForegroundColor Gray
     Write-Host ""
     Write-Host "To sync offline runs to wandb.ai:" -ForegroundColor Yellow
-    Write-Host "  wandb sync experiments\logs\grpo\wandb\offline-run-*" -ForegroundColor Yellow
-    Write-Host "  wandb sync experiments\logs\baseline\wandb\offline-run-*" -ForegroundColor Yellow
+    Write-Host "  .\sync_cluster.ps1 -Action sync-wandb" -ForegroundColor Yellow
+}
+
+function SyncWandb {
+    Write-Host "Syncing wandb offline runs to wandb.ai..." -ForegroundColor Cyan
+
+    $logsDir = Join-Path $LOCAL "experiments\logs"
+    if (-not (Test-Path $logsDir)) {
+        Write-Host "No experiments/logs/ found. Run download-wandb first." -ForegroundColor Red
+        return
+    }
+
+    $runDirs = Get-ChildItem -Path $logsDir -Recurse -Directory -Filter "offline-run-*"
+    if ($runDirs.Count -eq 0) {
+        Write-Host "No offline runs found in experiments\logs\" -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host "Found $($runDirs.Count) offline run(s):" -ForegroundColor Gray
+    $synced = 0
+    $failed = 0
+    foreach ($run in $runDirs) {
+        $relPath = $run.FullName.Substring($LOCAL.Length + 1)
+        Write-Host "  [$($synced + $failed + 1)/$($runDirs.Count)] $relPath" -ForegroundColor Gray -NoNewline
+        $result = & wandb sync $run.FullName 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " OK" -ForegroundColor Green
+            $synced++
+        } else {
+            Write-Host " FAILED" -ForegroundColor Red
+            $failed++
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Sync complete: $synced succeeded, $failed failed." -ForegroundColor $(if ($failed -gt 0) { "Yellow" } else { "Green" })
 }
 
 switch ($Action) {
@@ -157,4 +191,5 @@ switch ($Action) {
     "download-logs"         { DownloadLogs }
     "download-checkpoints"  { DownloadCheckpoints }
     "download-wandb"        { DownloadWandb }
+    "sync-wandb"            { SyncWandb }
 }

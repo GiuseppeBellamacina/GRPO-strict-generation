@@ -261,14 +261,24 @@ def main() -> None:
         print("Starting GRPO training...")
     trainer.train(resume_from_checkpoint=resume_from)
 
-    # Save final model
+    # Save final model — skip if the last checkpoint already matches max_steps
     final_path = Path(grpo_config.output_dir) / "final"
-    if is_main_process():
-        print(f"[grpo] Saving final model to {final_path}...")
-    trainer.save_model(str(final_path))
-    tokenizer.save_pretrained(str(final_path))  # type: ignore[union-attr]
-    if is_main_process():
-        print(f"Final model saved to {final_path}")
+    last_ckpt = sorted(Path(grpo_config.output_dir).glob("checkpoint-*"))
+    last_step = int(last_ckpt[-1].name.split("-")[-1]) if last_ckpt else -1
+    if last_step == grpo_config.max_steps:
+        # Last checkpoint IS the final model — just symlink/copy reference
+        if is_main_process():
+            print(
+                f"[grpo] checkpoint-{last_step} matches max_steps, "
+                f"skipping duplicate final save"
+            )
+    else:
+        if is_main_process():
+            print(f"[grpo] Saving final model to {final_path}...")
+        trainer.save_model(str(final_path))
+        tokenizer.save_pretrained(str(final_path))  # type: ignore[union-attr]
+        if is_main_process():
+            print(f"Final model saved to {final_path}")
 
     if is_main_process():
         wandb.finish()

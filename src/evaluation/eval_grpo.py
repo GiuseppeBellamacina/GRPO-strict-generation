@@ -120,9 +120,20 @@ def main() -> None:
 
     config = load_config(args.config)
 
-    # Determine checkpoint path
+    # Determine checkpoint path: explicit > final/ > latest checkpoint-*
     output_dir = config["training"]["output_dir"]
-    ckpt_path = args.checkpoint or str(Path(output_dir) / "final")
+    if args.checkpoint:
+        ckpt_path = args.checkpoint
+    elif (Path(output_dir) / "final").exists():
+        ckpt_path = str(Path(output_dir) / "final")
+    else:
+        # Fall back to the last checkpoint-* directory
+        ckpts = sorted(Path(output_dir).glob("checkpoint-*"))
+        if ckpts:
+            ckpt_path = str(ckpts[-1])
+        else:
+            print(f"No checkpoint found in {output_dir}")
+            return
     if not Path(ckpt_path).exists():
         print(f"Checkpoint not found: {ckpt_path}")
         return
