@@ -18,7 +18,7 @@
 #SBATCH --qos=gpu-xlarge
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1 --gres=shard:22000
+#SBATCH --gres=gpu:1 --gres=shard:22528
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=bellamacina50@gmail.com
 #SBATCH --output=logs/slurm-%j.log

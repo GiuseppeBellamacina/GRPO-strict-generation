@@ -17,7 +17,7 @@ model:
   use_unsloth: true # ✅ Unsloth per training 2x più veloce
   fast_inference: true # ✅ vLLM per rollout veloci
   max_seq_length: 2048
-  gpu_memory_utilization: 0.85 # vLLM: più VRAM per batch grandi
+  gpu_memory_utilization: 0.45 # ⚠️ SLURM shard=22GB su 44.5GB GPU → max ~20GB per vLLM
 
 # --- LoRA adapters ---
 lora:
@@ -45,8 +45,8 @@ dataset:
 # --- Iperparametri di training ---
 training:
   max_steps: 600
-  per_device_train_batch_size: 1
-  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 1 # TODO: prova con 2
+  gradient_accumulation_steps: 8 # TODO: prova con 4
   learning_rate: 5.0e-6
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1

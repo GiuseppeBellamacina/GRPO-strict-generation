@@ -146,11 +146,14 @@ def main() -> None:
         _select_best_checkpoint(config, args.eval_only)
         return
 
-    # Enable vLLM standby if fast_inference is requested
+    # Enable vLLM standby if fast_inference is requested (respect env override)
     if config.get("model", {}).get("fast_inference", False):
-        os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
+        if os.environ.get("UNSLOTH_VLLM_STANDBY") is None:
+            os.environ["UNSLOTH_VLLM_STANDBY"] = "1"
         if is_main_process():
-            print("[grpo] UNSLOTH_VLLM_STANDBY=1 (fast_inference requested)")
+            print(
+                f"[grpo] UNSLOTH_VLLM_STANDBY={os.environ.get('UNSLOTH_VLLM_STANDBY')} (fast_inference requested)"
+            )
 
     # Load model and tokenizer
     if is_main_process():

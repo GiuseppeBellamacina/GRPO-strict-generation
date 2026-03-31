@@ -167,7 +167,7 @@ wandb sync wandb\offline-run-*
 |-----|-----|-----|----------|-----------|
 | gpu-medium | 2 | 8 GB | 5.5 GB | 6h |
 | gpu-large | 4 | 16 GB | 11 GB | 12h |
-| gpu-xlarge | 8 | 48 GB | 22 GB | 12h |
+| gpu-xlarge | 8 | 48 GB | 22.5 GB | 12h |
 
 > Per il **setup** basta `gpu-medium`.
 > Per il **training GRPO** serve almeno `gpu-large`, consigliato `gpu-xlarge`.
