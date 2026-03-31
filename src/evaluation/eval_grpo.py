@@ -113,8 +113,8 @@ def main() -> None:
     parser.add_argument(
         "--max-samples",
         type=int,
-        default=None,
-        help="Max test samples to evaluate (default: all)",
+        default=200,
+        help="Max test samples to evaluate (default: 200)",
     )
     args = parser.parse_args()
 
@@ -136,13 +136,17 @@ def main() -> None:
     figures_dir = eval_output / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize wandb
+    # Initialize wandb — save runs inside log_dir instead of random wandb/ folder
     wandb_cfg = config.get("wandb", {})
+    import os
+
+    os.environ["WANDB_DIR"] = str(eval_output)
     wandb.init(
         project=wandb_cfg.get("project", "grpo-strict-generation"),
         name=f"eval-grpo-{ckpt_name}",
         config=config,
         tags=wandb_cfg.get("tags", []) + ["eval", "post-grpo"],
+        dir=str(eval_output),
     )
 
     # Load test dataset

@@ -135,17 +135,25 @@ function DownloadCheckpoints {
 }
 
 function DownloadWandb {
-    # wandb offline saves to ~/GRPO-strict-generation/wandb/ on the cluster.
-    # This folder is created automatically during training when WANDB_MODE=offline.
+    # wandb offline runs are now saved inside experiments/logs/ (e.g. experiments/logs/grpo/wandb/)
+    # Also check legacy wandb/ folder for older runs
     Write-Progress -Activity "Download" -Status "Downloading wandb offline runs..." -PercentComplete 0
-    $dest = Join-Path $LOCAL "wandb"
+
+    # Download from experiments/logs (new location)
+    $dest = Join-Path $LOCAL "experiments\logs"
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -rq "${REMOTE}/wandb/." $dest
+    scp -rq "${REMOTE}/experiments/logs/." $dest 2>$null
+
+    # Also download from legacy wandb/ folder if it exists
+    $legacyDest = Join-Path $LOCAL "wandb"
+    scp -rq "${REMOTE}/wandb/." $legacyDest 2>$null
+
     Write-Progress -Activity "Download" -Completed
-    Write-Host "  -> saved to wandb\" -ForegroundColor Gray
+    Write-Host "  -> saved wandb runs to experiments\logs\" -ForegroundColor Gray
     Write-Host ""
     Write-Host "To sync offline runs to wandb.ai:" -ForegroundColor Yellow
-    Write-Host "  wandb sync wandb\offline-run-*" -ForegroundColor Yellow
+    Write-Host "  wandb sync experiments\logs\grpo\wandb\offline-run-*" -ForegroundColor Yellow
+    Write-Host "  wandb sync experiments\logs\baseline\wandb\offline-run-*" -ForegroundColor Yellow
 }
 
 switch ($Action) {

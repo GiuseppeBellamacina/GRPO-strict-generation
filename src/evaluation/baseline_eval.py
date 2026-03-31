@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -16,11 +17,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
-import wandb
 from dotenv import load_dotenv
 from tqdm import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
+import wandb
 from src.datasets.dataloader import (
     format_prompt_for_model,
     load_synthetic_dataset,
@@ -103,6 +104,8 @@ def main() -> None:
 
     # Initialize wandb
     wandb_cfg = config.get("wandb", {})
+    eval_output_dir = eval_cfg.get("output_dir", "experiments/logs/baseline")
+    os.environ["WANDB_DIR"] = eval_output_dir
     wandb.init(
         project=wandb_cfg.get("project", "grpo-strict-generation"),
         name=wandb_cfg.get(
@@ -112,6 +115,7 @@ def main() -> None:
         tags=wandb_cfg.get(
             "tags", ["baseline", model_cfg["name"].split("/")[-1]]
         ),
+        dir=eval_output_dir,
     )
 
     print(f"Loading model: {model_cfg['name']}")

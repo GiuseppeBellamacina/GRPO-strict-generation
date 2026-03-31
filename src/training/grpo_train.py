@@ -199,11 +199,13 @@ def main() -> None:
             if is_main_process():
                 print("No checkpoint found, starting from scratch.")
 
-    # Initialize wandb
+    # Initialize wandb — save runs inside log_dir
     wandb_cfg = config.get("wandb", {})
     wandb_project = wandb_cfg.get("project", "grpo-strict-generation")
     wandb_run_name = wandb_cfg.get("run_name", "grpo-train")
+    log_dir = config["training"].get("log_dir", "experiments/logs/grpo")
     os.environ["WANDB_PROJECT"] = wandb_project
+    os.environ["WANDB_DIR"] = log_dir
     if is_main_process():
         print(f"[wandb] project={wandb_project} run={wandb_run_name}")
         wandb.init(
@@ -213,6 +215,7 @@ def main() -> None:
             tags=wandb_cfg.get(
                 "tags", ["grpo", config["model"]["name"].split("/")[-1]]
             ),
+            dir=log_dir,
             resume="allow" if args.resume else None,
         )
 
