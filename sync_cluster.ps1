@@ -23,10 +23,10 @@ function Upload {
     ssh $SSH_TARGET "mkdir -p ~/GRPO-strict-generation/experiments/{configs,logs,checkpoints} ~/GRPO-strict-generation/notebooks"
 
     # Collect all individual files to upload (flatten directories)
+    # NOTE: "data" is excluded — the dataset is generated on the cluster by setup.sh/train.sh
     $items = @(
         "src",
         "cluster",
-        "data",
         "docs",
         "tests",
         "notebooks",

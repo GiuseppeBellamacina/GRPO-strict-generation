@@ -51,12 +51,23 @@ export UNSLOTH_VLLM_STANDBY=0
 # Percorso progetto
 cd "$HOME/GRPO-strict-generation"
 
+# Genera dataset se mancante (potrebbe essere stato rimosso da un upload)
+if [ ! -d "data/synthetic" ]; then
+    echo "Dataset non trovato, generazione in corso..."
+    apptainer run --nv /shared/sifs/latest.sif \
+        python -m src.datasets.synthetic_dataset --config "${CONFIG}"
+fi
+
 echo ""
 echo "Avvio training dentro Apptainer..."
 echo ""
 
 # ── Esecuzione dentro container Apptainer ─────────────────────────────────────
-apptainer run --nv /shared/sifs/latest.sif \
+apptainer run --nv \
+    --env WANDB_MODE=offline \
+    --env UNSLOTH_VLLM_STANDBY=0 \
+    --env PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8 \
+    /shared/sifs/latest.sif \
     python -m src.training --config "${CONFIG}" ${EXTRA_ARGS}
 
 echo ""
