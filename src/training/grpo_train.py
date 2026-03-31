@@ -12,6 +12,7 @@ Direct invocation (Unsloth NOT guaranteed to patch before torch)::
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import shutil
@@ -293,7 +294,14 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
 
     # Build a config without LoRA (adapters are merged in checkpoints)
     # and without fast_inference to avoid vLLM conflicts
-    eval_model_config = {"model": {**config["model"], "fast_inference": False}}
+    # Also disable unsloth to reduce VRAM leaks between checkpoint loads
+    eval_model_config = {
+        "model": {
+            **config["model"],
+            "fast_inference": False,
+            "use_unsloth": False,
+        }
+    }
     if "lora" in eval_model_config:
         del eval_model_config["lora"]
 
@@ -334,6 +342,7 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
 
         # Free memory
         del ckpt_model, ckpt_tokenizer
+        gc.collect()
         torch.cuda.empty_cache()
 
     # Summary
