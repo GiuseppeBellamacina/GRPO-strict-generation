@@ -22,6 +22,7 @@ function Upload {
     Write-Progress -Activity "Upload" -Status "Creating remote directories..." -PercentComplete 2
     ssh $SSH_TARGET "mkdir -p ~/GRPO-strict-generation/experiments/{configs,logs,checkpoints} ~/GRPO-strict-generation/notebooks"
 
+    # Collect all individual files to upload (flatten directories)
     $items = @(
         "src",
         "cluster",
@@ -33,27 +34,69 @@ function Upload {
         "pyproject.toml",
         "setup.sh",
         "format.sh",
-        "README.md",
+        "README.md"
     )
 
-    $total = $items.Count
-    for ($i = 0; $i -lt $total; $i++) {
-        $item = $items[$i]
-        $pct  = [int](($i / $total) * 100)
-        Write-Progress -Activity "Upload" `
-            -Status "[$($i + 1)/$total] $item" `
-            -PercentComplete $pct
+    # Build flat list of (localPath, remotePath) pairs
+    $files = [System.Collections.Generic.List[object]]::new()
+    $dirsToClean = [System.Collections.Generic.List[string]]::new()
 
+    foreach ($item in $items) {
         $localPath = Join-Path $LOCAL $item
-        if (Test-Path $localPath) {
-            scp -rq $localPath "${REMOTE}/$item"
-        } else {
+        if (-not (Test-Path $localPath)) {
             Write-Host "  [SKIP] $item (not found)" -ForegroundColor Yellow
+            continue
+        }
+        if (Test-Path $localPath -PathType Container) {
+            # Track top-level dirs for remote cleanup
+            $parent = Split-Path $item
+            if (-not $parent) {
+                $dirsToClean.Add($item)
+            }
+            # Enumerate all files in directory recursively
+            Get-ChildItem -Path $localPath -File -Recurse | ForEach-Object {
+                $relPath = $_.FullName.Substring($LOCAL.Length + 1) -replace '\\', '/'
+                $files.Add(@{ Local = $_.FullName; Remote = $relPath })
+            }
+        } else {
+            $files.Add(@{ Local = $localPath; Remote = $item })
         }
     }
 
+    # Clean remote top-level dirs before uploading
+    if ($dirsToClean.Count -gt 0) {
+        $rmCmd = ($dirsToClean | ForEach-Object { "rm -rf ~/GRPO-strict-generation/$_" }) -join "; "
+        ssh $SSH_TARGET $rmCmd
+        # Recreate the directories
+        $mkCmd = ($dirsToClean | ForEach-Object { "mkdir -p ~/GRPO-strict-generation/$_" }) -join "; "
+        ssh $SSH_TARGET $mkCmd
+    }
+
+    # Ensure all remote subdirectories exist (batch)
+    $remoteDirs = $files | ForEach-Object {
+        $d = (Split-Path $_.Remote) -replace '\\', '/'
+        if ($d) { "~/GRPO-strict-generation/$d" }
+    } | Sort-Object -Unique
+    if ($remoteDirs.Count -gt 0) {
+        $mkdirCmd = "mkdir -p " + ($remoteDirs -join " ")
+        ssh $SSH_TARGET $mkdirCmd
+    }
+
+    # Upload files one by one with granular progress
+    $total = $files.Count
+    for ($i = 0; $i -lt $total; $i++) {
+        $f = $files[$i]
+        $pct = [int](($i / $total) * 100)
+        $name = $f.Remote
+        Write-Progress -Activity "Upload" `
+            -Status "[$($i + 1)/$total] $name" `
+            -PercentComplete $pct
+
+        scp -q $f.Local "${REMOTE}/$($f.Remote)"
+    }
+
     Write-Progress -Activity "Upload" -Completed
-    Write-Host "Upload complete." -ForegroundColor Green
+    Write-Host "Upload complete ($total files)." -ForegroundColor Green
 }
 
 function DownloadAll {

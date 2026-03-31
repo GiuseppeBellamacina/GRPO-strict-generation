@@ -150,9 +150,9 @@ I pacchetti vengono installati in `~/.local/` (persistente tra i job).
 # Scopri a quali queue sei autorizzato:
 sacctmgr show associations user=$USER format=account,qos,defaultqos -P
 
-# Apri una shell interattiva (sostituisci dl-course-q1 con la tua queue):
-srun --account dl-course-q1 --partition dl-course-q1 --qos gpu-small \
-     --gres=gpu:1,shard:2000 --mem=4G \
+# Apri una shell interattiva (sostituisci dl-course-q2 con la tua queue):
+srun --account dl-course-q2 --partition dl-course-q2 --qos gpu-medium \
+     --gres=gpu:1 --gres=shard:5000 --mem=8G \
      --pty apptainer shell --nv /shared/sifs/latest.sif
 ```
 

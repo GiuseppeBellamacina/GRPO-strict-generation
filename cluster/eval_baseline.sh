@@ -6,18 +6,18 @@
 #   sbatch cluster/eval_baseline.sh
 # ============================================================================
 
-# ┌────────────────────────────────────────────────────────────────────────────┐
-# │  CONFIGURA QUI — modifica account/partition/qos/email/risorse              │
-# └────────────────────────────────────────────────────────────────────────────┘
+# ┌────────────────────────────────────────────────────────┐
+# │  CONFIGURA QUI — modifica account/partition/qos/email  │
+# └────────────────────────────────────────────────────────┘
 #SBATCH --job-name=grpo-baseline
-#SBATCH --account=dl-course-q1
-#SBATCH --partition=dl-course-q1
+#SBATCH --account=dl-course-q2
+#SBATCH --partition=dl-course-q2
 #SBATCH --qos=gpu-large
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=2
-#SBATCH --gres=gpu:1,shard:11000
+#SBATCH --gres=gpu:1 --gres=shard:11000
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=tuo-indirizzo@email.com
+#SBATCH --mail-user=bellamacina50@gmail.com
 #SBATCH --output=logs/slurm-baseline-%j.log
 
 CONFIG="experiments/configs/baseline.yaml"

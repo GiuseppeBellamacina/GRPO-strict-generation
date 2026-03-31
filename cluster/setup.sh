@@ -19,26 +19,40 @@ echo ""
 
 # ── 1. Verifica GPU ──────────────────────────────────────────────────────────
 echo "🔍 Rilevamento GPU..."
-GPU_INFO=$(python3 -c "
+
+# Trova il comando python disponibile
+if command -v python3 &>/dev/null; then
+    PY=python3
+elif command -v python &>/dev/null; then
+    PY=python
+else
+    echo "❌ Python non trovato nel container!"
+    exit 1
+fi
+echo "   Python: $($PY --version 2>&1)"
+
+GPU_INFO=$($PY -c "
 import torch
+print(f'  PyTorch: {torch.__version__}')
+print(f'  CUDA available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():
     name = torch.cuda.get_device_name(0)
     cc = torch.cuda.get_device_capability()
-    vram = torch.cuda.get_device_properties(0).total_mem / 1e9
-    print(f'{name} (CC {cc[0]}.{cc[1]}, {vram:.1f} GB)')
+    vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+    print(f'  GPU: {name} (CC {cc[0]}.{cc[1]}, {vram:.1f} GB)')
     print(f'CC_MAJOR={cc[0]}')
 else:
-    print('NESSUNA GPU')
+    print('  GPU: NESSUNA GPU rilevata')
     print('CC_MAJOR=0')
-" 2>/dev/null)
+") || { echo "❌ Errore nel rilevamento GPU:"; $PY -c "import torch; print(torch.cuda.is_available())"; exit 1; }
 
-echo "   GPU: $(echo "$GPU_INFO" | head -1)"
+echo "$GPU_INFO" | grep -v CC_MAJOR
 CC_MAJOR=$(echo "$GPU_INFO" | grep CC_MAJOR | cut -d= -f2)
 
 # ── 2. Installa dipendenze base ──────────────────────────────────────────────
 echo ""
 echo "📦 Installazione dipendenze base (pip --user)..."
-pip install --user --quiet \
+pip install --user \
     trl==0.24.0 peft bitsandbytes accelerate datasets \
     wandb seaborn scikit-learn python-dotenv tqdm pyyaml \
     matplotlib numpy pandas ipywidgets tensorboard
@@ -47,7 +61,7 @@ pip install --user --quiet \
 if [ "$CC_MAJOR" -ge 7 ] 2>/dev/null; then
     echo ""
     echo "📦 GPU CC >= 7.0 → installazione Unsloth + vLLM..."
-    pip install --user --quiet unsloth==2026.3.17 vllm==0.18.0
+    pip install --user unsloth==2026.3.17 vllm==0.18.0
 else
     echo ""
     echo "⚠️  GPU CC < 7.0 (K80?) → Unsloth e vLLM NON supportati."
@@ -63,7 +77,7 @@ pip install --user --no-deps -e .
 if [ ! -d "data/synthetic" ]; then
     echo ""
     echo "📊 Generazione dataset sintetico (5000 samples)..."
-    python3 -c "
+    $PY -c "
 from src.datasets.synthetic_dataset import generate_dataset
 ds = generate_dataset(num_samples=5000, seed=42)
 ds.save_to_disk('data/synthetic')
@@ -77,7 +91,7 @@ fi
 # ── 6. Verifica installazione ─────────────────────────────────────────────────
 echo ""
 echo "🔍 Verifica installazione..."
-python3 -c "
+$PY -c "
 import torch, transformers, trl, peft, datasets
 print(f'  PyTorch:       {torch.__version__}')
 print(f'  Transformers:  {transformers.__version__}')

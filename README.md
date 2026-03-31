@@ -137,7 +137,8 @@ Use `sync_cluster.ps1` in the repo root to transfer files to/from the DMI UniCT 
 .\sync_cluster.ps1 -Action download-wandb         # wandb/ offline runs
 ```
 
-See [docs/CLUSTER.md](docs/CLUSTER.md) for full cluster setup instructions.
+See [docs/CLUSTER.md](docs/CLUSTER.md) for full cluster setup instructions
+and the [official cluster documentation](https://gcluster.dmi.unict.it/docs/#/).
 
 ### 5. Multi-GPU Training
 

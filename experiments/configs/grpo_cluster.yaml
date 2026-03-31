@@ -1,8 +1,9 @@
 # ============================================================================
-# GRPO training config — Cluster DMI (K80 / gpu-xlarge)
+# GRPO training config — Cluster DMI (L40S / gpu-xlarge)
 #
-# K80 (CC 3.7): NO bfloat16, NO Unsloth, NO vLLM, NO 4-bit quantization
-# TinyLlama 1.1B in fp16 ≈ 4.5 GB → fits comfortably in 22 GB VRAM
+# L40S (CC 8.9, 48 GB VRAM): bf16 ✅, Unsloth ✅, vLLM ✅, 4-bit ✅
+# Con gpu-xlarge shard:22000 → 22 GB VRAM disponibili
+# TinyLlama 1.1B 4-bit ≈ 1.5 GB → ampio margine per rollout grandi
 #
 # Usato da:  python -m src.training --config experiments/configs/grpo_cluster.yaml
 # ============================================================================
@@ -11,12 +12,12 @@
 model:
   name: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
   num_gpus: 1
-  quantization: null # ⚠️ NO 4-bit su K80 (CC < 7.0)
-  dtype: "float16" # ⚠️ K80 non supporta bfloat16
-  use_unsloth: false # ⚠️ Unsloth richiede CC >= 7.0
-  fast_inference: false # ⚠️ vLLM richiede CC >= 7.0
+  quantization: "4bit" # ✅ NF4 supportato su L40S
+  dtype: "bfloat16" # ✅ L40S supporta bfloat16
+  use_unsloth: true # ✅ Unsloth per training 2x più veloce
+  fast_inference: true # ✅ vLLM per rollout veloci
   max_seq_length: 2048
-  gpu_memory_utilization: 0.75 # ignorato senza vLLM
+  gpu_memory_utilization: 0.85 # vLLM: più VRAM per batch grandi
 
 # --- LoRA adapters ---
 lora:
@@ -49,11 +50,10 @@ training:
   learning_rate: 5.0e-6
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
-  optim: "adamw_torch" # ⚠️ paged_adamw_8bit potrebbe non funzionare su K80
+  optim: "paged_adamw_8bit" # ✅ optimizer 8-bit per risparmiare VRAM
   weight_decay: 0.1
   max_grad_norm: 0.1
-  bf16: false # ⚠️ CRITICO: K80 non supporta bf16
-  fp16: true # ⚠️ usa mixed precision fp16 al posto di bf16
+  bf16: true # ✅ mixed precision bfloat16
   logging_steps: 5
   save_steps: 60
   save_total_limit: 3
@@ -62,8 +62,8 @@ training:
 
 # --- Parametri GRPO ---
 grpo:
-  num_generations: 2 # K80: meno rollout paralleli (22 GB ma modello fp16 full)
-  max_completion_length: 512 # ridotto per stare comodi in VRAM
+  num_generations: 8 # L40S: più rollout paralleli → stime GRPO migliori
+  max_completion_length: 768 # completions più lunghe per ridurre clipping
   max_prompt_length: 512
   beta: 0.04
   temperature: 0.9
@@ -79,4 +79,4 @@ reward:
 wandb:
   project: "grpo-strict-generation"
   run_name: null
-  tags: ["grpo", "TinyLlama-1.1B", "json-only", "cluster-k80"]
+  tags: ["grpo", "TinyLlama-1.1B", "json-only", "cluster-l40s"]
