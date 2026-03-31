@@ -68,7 +68,7 @@ grpo:
 # --- Pesi della reward function ---
 # Tutti i pesi devono sommare a 1.0.
 reward:
-  weight_format: 0.20 # presenza di un blocco ```json ... ``` corretto (usato come gate moltiplicativo)
+  weight_format: 0.20 # presenza di un blocco ```json ... ``` corretto (gate duro a 0 se assente; contributo additivo altrimenti)
   weight_validity: 0.35 # JSON parsabile senza errori (punteggio graduato)
   weight_schema: 0.35 # conformità strutturale ai vincoli del prompt
   weight_reasoning: 0.10 # bonus per <think>...</think> con contenuto reale (ora allineato al system prompt)
