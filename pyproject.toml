@@ -54,11 +54,11 @@ fast = [
 profile = "black"
 
 [tool.black]
-line-length = 80
+line-length = 70
 target-version = ["py312"]
 
 [tool.ruff]
-line-length = 80
+line-length = 70
 target-version = "py312"
 extend-include = ["*.ipynb"]
 exclude = ["notebooks/reference/**"]

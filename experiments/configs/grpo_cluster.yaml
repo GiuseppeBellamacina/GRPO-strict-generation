@@ -4,13 +4,14 @@
 # L40S (CC 8.9, 48 GB VRAM): bf16 ✅, Unsloth ✅, vLLM ✅, 4-bit ✅
 # Con gpu-xlarge shard:22000 → 22 GB VRAM disponibili
 # TinyLlama 1.1B 4-bit ≈ 1.5 GB → ampio margine per rollout grandi
+# SmolLM2 360M 4-bit ≈ 0.5 GB → margine ancora più ampio
 #
 # Usato da:  python -m src.training --config experiments/configs/grpo_cluster.yaml
 # ============================================================================
 
 # --- Modello ---
 model:
-  name: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+  name: "HuggingFaceTB/SmolLM2-360M-Instruct"
   num_gpus: 1
   quantization: "4bit" # ✅ NF4 supportato su L40S
   dtype: "bfloat16" # ✅ L40S supporta bfloat16
@@ -78,5 +79,5 @@ reward:
 # --- Weights & Biases ---
 wandb:
   project: "grpo-strict-generation"
-  run_name: "grpo-tinyllama-cluster"
-  tags: ["grpo", "TinyLlama-1.1B", "json-only", "cluster-l40s"]
+  run_name: "grpo-smollm2-360m-cluster"
+  tags: ["grpo", "SmolLM2-360M", "json-only", "cluster-l40s"]

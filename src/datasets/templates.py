@@ -25,10 +25,26 @@ SIMPLE: list[Template] = [
         ),
         "params": lambda: {
             "k1": random.choice(
-                ["name", "title", "label", "city", "color", "brand", "category"]
+                [
+                    "name",
+                    "title",
+                    "label",
+                    "city",
+                    "color",
+                    "brand",
+                    "category",
+                ]
             ),
             "k2": random.choice(
-                ["age", "count", "score", "year", "quantity", "rating", "price"]
+                [
+                    "age",
+                    "count",
+                    "score",
+                    "year",
+                    "quantity",
+                    "rating",
+                    "price",
+                ]
             ),
             "k3": random.choice(
                 [
@@ -69,7 +85,9 @@ SIMPLE: list[Template] = [
             '"{k2}" which is an array of {n} integers.'
         ),
         "params": lambda: {
-            "k1": random.choice(["id", "name", "label", "code", "tag"]),
+            "k1": random.choice(
+                ["id", "name", "label", "code", "tag"]
+            ),
             "k2": random.choice(
                 ["values", "scores", "data", "items", "measurements"]
             ),
@@ -85,7 +103,14 @@ SIMPLE: list[Template] = [
             "n": random.randint(3, 6),
             "vtype": random.choice(["string", "integer", "boolean"]),
             "topic": random.choice(
-                ["weather", "food", "sports", "music", "travel", "health"]
+                [
+                    "weather",
+                    "food",
+                    "sports",
+                    "music",
+                    "travel",
+                    "health",
+                ]
             ),
         },
     },
@@ -108,8 +133,12 @@ SIMPLE: list[Template] = [
                     "preference",
                 ]
             ),
-            "k1": random.choice(["name", "title", "description", "label"]),
-            "k2": random.choice(["priority", "order", "level", "index"]),
+            "k1": random.choice(
+                ["name", "title", "description", "label"]
+            ),
+            "k2": random.choice(
+                ["priority", "order", "level", "index"]
+            ),
             "t2": random.choice(["integer", "number"]),
             "k3": random.choice(
                 ["done", "read", "starred", "archived", "pinned"]
@@ -124,7 +153,9 @@ SIMPLE: list[Template] = [
         ),
         "params": lambda: {
             "n": random.randint(2, 5),
-            "k1": random.choice(["name", "item", "label", "title", "city"]),
+            "k1": random.choice(
+                ["name", "item", "label", "title", "city"]
+            ),
             "k2": random.choice(
                 ["value", "count", "score", "amount", "population"]
             ),
@@ -136,10 +167,16 @@ SIMPLE: list[Template] = [
             "containing a flat array of {n} {elem_type}."
         ),
         "params": lambda: {
-            "k1": random.choice(["category", "group", "type", "section"]),
-            "k2": random.choice(["items", "elements", "entries", "members"]),
+            "k1": random.choice(
+                ["category", "group", "type", "section"]
+            ),
+            "k2": random.choice(
+                ["items", "elements", "entries", "members"]
+            ),
             "n": random.randint(3, 7),
-            "elem_type": random.choice(["strings", "integers", "booleans"]),
+            "elem_type": random.choice(
+                ["strings", "integers", "booleans"]
+            ),
         },
     },
     {
@@ -180,12 +217,24 @@ MEDIUM: list[Template] = [
             "k1": random.choice(
                 ["name", "title", "username", "product", "label"]
             ),
-            "k2": random.choice(["age", "id", "score", "quantity", "price"]),
-            "k3": random.choice(
-                ["address", "contact", "location", "details", "metadata"]
+            "k2": random.choice(
+                ["age", "id", "score", "quantity", "price"]
             ),
-            "nk1": random.choice(["street", "city", "email", "line1", "type"]),
-            "nk2": random.choice(["zip", "country", "phone", "region", "code"]),
+            "k3": random.choice(
+                [
+                    "address",
+                    "contact",
+                    "location",
+                    "details",
+                    "metadata",
+                ]
+            ),
+            "nk1": random.choice(
+                ["street", "city", "email", "line1", "type"]
+            ),
+            "nk2": random.choice(
+                ["zip", "country", "phone", "region", "code"]
+            ),
         },
     },
     {
@@ -230,9 +279,16 @@ MEDIUM: list[Template] = [
             ),
             "k1": random.choice(["host", "port", "name", "endpoint"]),
             "k2": random.choice(
-                ["timeout", "retries", "max_connections", "buffer_size"]
+                [
+                    "timeout",
+                    "retries",
+                    "max_connections",
+                    "buffer_size",
+                ]
             ),
-            "k3": random.choice(["auth", "ssl", "logging", "metrics", "cors"]),
+            "k3": random.choice(
+                ["auth", "ssl", "logging", "metrics", "cors"]
+            ),
         },
     },
     {
@@ -286,9 +342,15 @@ MEDIUM: list[Template] = [
                     "audit record",
                 ]
             ),
-            "s1": random.choice(["header", "metadata", "summary", "info"]),
-            "s2": random.choice(["body", "content", "details", "payload"]),
-            "s3": random.choice(["footer", "signature", "status", "notes"]),
+            "s1": random.choice(
+                ["header", "metadata", "summary", "info"]
+            ),
+            "s2": random.choice(
+                ["body", "content", "details", "payload"]
+            ),
+            "s3": random.choice(
+                ["footer", "signature", "status", "notes"]
+            ),
         },
     },
     {
@@ -298,15 +360,21 @@ MEDIUM: list[Template] = [
             'objects with "{nk1}" (string) and "{nk2}" (number) fields.'
         ),
         "params": lambda: {
-            "k1": random.choice(["title", "name", "event", "project"]),
+            "k1": random.choice(
+                ["title", "name", "event", "project"]
+            ),
             "k2": random.choice(
                 ["created_at", "due_date", "start_date", "timestamp"]
             ),
             "k3": random.choice(
                 ["entries", "line_items", "records", "milestones"]
             ),
-            "nk1": random.choice(["description", "label", "name", "note"]),
-            "nk2": random.choice(["amount", "hours", "progress", "value"]),
+            "nk1": random.choice(
+                ["description", "label", "name", "note"]
+            ),
+            "nk2": random.choice(
+                ["amount", "hours", "progress", "value"]
+            ),
         },
     },
     {

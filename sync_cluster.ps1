@@ -27,14 +27,7 @@ function Upload {
     $items = @(
         "src",
         "cluster",
-        "docs",
-        "tests",
-        "notebooks",
-        "experiments/configs",
-        "pyproject.toml",
-        "setup.sh",
-        "format.sh",
-        "README.md"
+        "experiments/configs"
     )
 
     # Build flat list of (localPath, remotePath) pairs

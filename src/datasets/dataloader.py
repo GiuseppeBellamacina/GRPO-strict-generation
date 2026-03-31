@@ -78,7 +78,9 @@ def format_prompt_for_model(
         {"role": "user", "content": sample["prompt"]},
     ]
 
-    if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
+    if tokenizer is not None and hasattr(
+        tokenizer, "apply_chat_template"
+    ):
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
@@ -86,7 +88,9 @@ def format_prompt_for_model(
     # Fallback: ChatML format
     parts = []
     for msg in messages:
-        parts.append(f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>")
+        parts.append(
+            f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>"
+        )
     parts.append("<|im_start|>assistant\n")
     return "\n".join(parts)
 
@@ -121,8 +125,12 @@ def prepare_sft_dataset(
             {"role": "assistant", "content": gold_completions[i]},
         ]
 
-        if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
-            text = tokenizer.apply_chat_template(messages, tokenize=False)
+        if tokenizer is not None and hasattr(
+            tokenizer, "apply_chat_template"
+        ):
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False
+            )
         else:
             parts = []
             for msg in messages:

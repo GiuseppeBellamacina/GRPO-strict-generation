@@ -71,11 +71,17 @@ class TestSchemaReward:
         assert schema_reward("No code.", "Generate 3 items.") == 0.0
 
     def test_invalid_json(self):
-        assert schema_reward("```json\n{bad}\n```", "Generate 3 items.") == 0.0
+        assert (
+            schema_reward("```json\n{bad}\n```", "Generate 3 items.")
+            == 0.0
+        )
 
     def test_exact_array_count_match(self):
         text = "```json\n[1, 2, 3]\n```"
-        assert schema_reward(text, "Generate an array of 3 items.") == 1.0
+        assert (
+            schema_reward(text, "Generate an array of 3 items.")
+            == 1.0
+        )
 
     def test_exact_array_count_off_by_one(self):
         text = "```json\n[1, 2]\n```"
@@ -98,11 +104,17 @@ class TestSchemaReward:
 
     def test_toplevel_array_required(self):
         text = "```json\n[1, 2]\n```"
-        assert schema_reward(text, "Generate a JSON array of numbers.") == 1.0
+        assert (
+            schema_reward(text, "Generate a JSON array of numbers.")
+            == 1.0
+        )
 
     def test_toplevel_object_required_but_got_array(self):
         text = "```json\n[1, 2]\n```"
-        assert schema_reward(text, "Generate a JSON object with keys.") == 0.0
+        assert (
+            schema_reward(text, "Generate a JSON object with keys.")
+            == 0.0
+        )
 
 
 class TestReasoningReward:

@@ -23,9 +23,9 @@ import matplotlib
 
 matplotlib.use("Agg")
 import torch
+import wandb
 from dotenv import load_dotenv
 
-import wandb
 from src.datasets.dataloader import (
     format_prompt_for_model,
     load_synthetic_dataset,
@@ -49,19 +49,49 @@ def _evaluate_model(
     prompts: list[str],
     difficulties: list[str],
     gen_config: dict[str, Any],
+    is_checkpoint: bool = False,
 ) -> dict[str, Any]:
-    """Load a model from path, generate completions, compute metrics."""
-    eval_config = {
-        "model": {
-            **config["model"],
-            "name": model_path,
-            "fast_inference": False,
-            "use_unsloth": False,
-        }
-    }
+    """Load a model from path, generate completions, compute metrics.
 
-    print(f"  Loading model from {model_path}...")
-    model, tokenizer = load_model_and_tokenizer(eval_config)
+    Args:
+        is_checkpoint: If True, treat model_path as a PEFT/LoRA checkpoint
+                       and load adapters on top of the base model.
+    """
+    from pathlib import Path as _Path
+
+    model_cfg = config["model"]
+
+    if (
+        is_checkpoint
+        and (_Path(model_path) / "adapter_config.json").exists()
+    ):
+        # PEFT checkpoint — load base model + merge LoRA adapters
+        from peft import PeftModel
+
+        print(f"  Loading base model {model_cfg['name']}...")
+        base_config = {
+            "model": {
+                **model_cfg,
+                "fast_inference": False,
+                "use_unsloth": False,
+            }
+        }
+        model, tokenizer = load_model_and_tokenizer(base_config)
+        print(f"  Loading LoRA adapters from {model_path}...")
+        model = PeftModel.from_pretrained(model, model_path)
+        model = model.merge_and_unload()
+    else:
+        # Full model or base model (baseline)
+        eval_config = {
+            "model": {
+                **model_cfg,
+                "name": model_path,
+                "fast_inference": False,
+                "use_unsloth": False,
+            }
+        }
+        print(f"  Loading model from {model_path}...")
+        model, tokenizer = load_model_and_tokenizer(eval_config)
 
     print(f"  Generating completions for {len(prompts)} prompts...")
     completions_per_prompt = generate_completions(
@@ -74,7 +104,9 @@ def _evaluate_model(
     )
 
     first_completions = [comps[0] for comps in completions_per_prompt]
-    metrics = compute_detailed_metrics(first_completions, difficulties)
+    metrics = compute_detailed_metrics(
+        first_completions, difficulties
+    )
 
     # Free memory
     del model, tokenizer
@@ -91,7 +123,10 @@ def main() -> None:
         description="Post-training evaluation of GRPO model"
     )
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to training config YAML"
+        "--config",
+        type=str,
+        required=True,
+        help="Path to training config YAML",
     )
     parser.add_argument(
         "--checkpoint",
@@ -168,10 +203,14 @@ def main() -> None:
     )
     test_ds = ds["test"]
     if args.max_samples:
-        test_ds = test_ds.select(range(min(args.max_samples, len(test_ds))))
+        test_ds = test_ds.select(
+            range(min(args.max_samples, len(test_ds)))
+        )
 
     gen_config = {
-        "max_new_tokens": config["grpo"].get("max_completion_length", 512),
+        "max_new_tokens": config["grpo"].get(
+            "max_completion_length", 512
+        ),
         "temperature": 0.7,
         "top_p": 0.95,
         "do_sample": True,
@@ -206,7 +245,13 @@ def main() -> None:
     torch.cuda.empty_cache()
 
     grpo_metrics = _evaluate_model(
-        config, ckpt_path, test_ds, prompts, difficulties, gen_config
+        config,
+        ckpt_path,
+        test_ds,
+        prompts,
+        difficulties,
+        gen_config,
+        is_checkpoint=True,
     )
 
     print(f"\nGRPO Pass@1: {grpo_metrics['overall_pass_rate']:.4f}")
@@ -223,7 +268,8 @@ def main() -> None:
     }
     results_path = eval_output / f"eval_{ckpt_name}.json"
     results_path.write_text(
-        json.dumps(grpo_results, indent=2, default=str), encoding="utf-8"
+        json.dumps(grpo_results, indent=2, default=str),
+        encoding="utf-8",
     )
     print(f"\nResults saved to {results_path}")
 
@@ -238,7 +284,9 @@ def main() -> None:
     if args.compare:
         baseline_path = Path(args.baseline_results)
         if baseline_path.exists():
-            print(f"\nLoading baseline results from {baseline_path}...")
+            print(
+                f"\nLoading baseline results from {baseline_path}..."
+            )
             baseline_data = json.loads(
                 baseline_path.read_text(encoding="utf-8")
             )
@@ -265,7 +313,8 @@ def main() -> None:
             }
             bl_path = bl_output / "results.json"
             bl_path.write_text(
-                json.dumps(bl_results, indent=2, default=str), encoding="utf-8"
+                json.dumps(bl_results, indent=2, default=str),
+                encoding="utf-8",
             )
             print(f"Baseline results saved to {bl_path}")
 
@@ -273,8 +322,12 @@ def main() -> None:
         print(f"\n{'='*50}")
         print("Comparison: Baseline vs GRPO")
         print(f"{'='*50}")
-        print(f"  Baseline Pass@1: {baseline_metrics['overall_pass_rate']:.4f}")
-        print(f"  GRPO Pass@1:     {grpo_metrics['overall_pass_rate']:.4f}")
+        print(
+            f"  Baseline Pass@1: {baseline_metrics['overall_pass_rate']:.4f}"
+        )
+        print(
+            f"  GRPO Pass@1:     {grpo_metrics['overall_pass_rate']:.4f}"
+        )
         delta = (
             grpo_metrics["overall_pass_rate"]
             - baseline_metrics["overall_pass_rate"]
@@ -283,25 +336,33 @@ def main() -> None:
 
         # Comparison figure
         model_name = config["model"]["name"].split("/")[-1]
-        comp_fig_path = str(figures_dir / "baseline_vs_grpo_comparison.png")
+        comp_fig_path = str(
+            figures_dir / "baseline_vs_grpo_comparison.png"
+        )
         plot_baseline_vs_grpo_comparison(
             baseline_metrics=baseline_metrics,
             grpo_metrics=grpo_metrics,
             model_name=model_name,
             output_path=comp_fig_path,
         )
-        wandb.log({"eval/baseline_vs_grpo": wandb.Image(comp_fig_path)})
+        wandb.log(
+            {"eval/baseline_vs_grpo": wandb.Image(comp_fig_path)}
+        )
 
         # Save comparison JSON
         comparison = {
-            "baseline_pass_rate": baseline_metrics["overall_pass_rate"],
+            "baseline_pass_rate": baseline_metrics[
+                "overall_pass_rate"
+            ],
             "grpo_pass_rate": grpo_metrics["overall_pass_rate"],
             "delta": delta,
             "baseline_per_category": baseline_metrics["per_category"],
             "grpo_per_category": grpo_metrics["per_category"],
         }
         comp_path = eval_output / "comparison.json"
-        comp_path.write_text(json.dumps(comparison, indent=2), encoding="utf-8")
+        comp_path.write_text(
+            json.dumps(comparison, indent=2), encoding="utf-8"
+        )
         print(f"Comparison saved to {comp_path}")
 
     wandb.finish()

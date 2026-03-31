@@ -61,7 +61,9 @@ def _max_nesting_depth(obj: Any, _depth: int = 0) -> int:
     if isinstance(obj, dict):
         if not obj:
             return _depth
-        return max(_max_nesting_depth(v, _depth + 1) for v in obj.values())
+        return max(
+            _max_nesting_depth(v, _depth + 1) for v in obj.values()
+        )
     if isinstance(obj, list):
         if not obj:
             return _depth
@@ -105,9 +107,7 @@ def _extract_exact_count(instruction: str) -> int | None:
     m = re.search(r"exactly\s+(\d+)", instruction, re.IGNORECASE)
     if m:
         return int(m.group(1))
-    units = (
-        r"items?|objects?|elements?|steps?|widgets?|operations?|tasks?|entries?"
-    )
+    units = r"items?|objects?|elements?|steps?|widgets?|operations?|tasks?|entries?"
     m = re.search(rf"(\d+)\s+(?:{units})", instruction, re.IGNORECASE)
     if m:
         return int(m.group(1))
@@ -191,7 +191,9 @@ def _requires_array_toplevel(instruction: str) -> bool | None:
 def format_reward(completion: str) -> float:
     """1.0 if a proper ```json ... ``` block is present, 0.5 for a generic
     ``` ... ``` block, 0.0 otherwise."""
-    if re.search(r"```json\s*\n[\s\S]*?```", completion, re.IGNORECASE):
+    if re.search(
+        r"```json\s*\n[\s\S]*?```", completion, re.IGNORECASE
+    ):
         return 1.0
     if re.search(r"```\s*\n[\s\S]*?```", completion):
         return 0.5
@@ -296,7 +298,9 @@ def schema_reward(completion: str, instruction: str) -> float:
     # 4. Nesting depth
     req_depth = _extract_required_depth(instruction)
     if req_depth is not None:
-        scores.append(min(_max_nesting_depth(parsed) / req_depth, 1.0))
+        scores.append(
+            min(_max_nesting_depth(parsed) / req_depth, 1.0)
+        )
 
     # 5. Top-level type
     tl = _requires_array_toplevel(instruction)
@@ -387,9 +391,15 @@ def build_reward_function(
             so the weights always sum to 1.0.
     """
     if reward_config is not None:
-        weight_format = reward_config.get("weight_format", weight_format)
-        weight_validity = reward_config.get("weight_validity", weight_validity)
-        weight_schema = reward_config.get("weight_schema", weight_schema)
+        weight_format = reward_config.get(
+            "weight_format", weight_format
+        )
+        weight_validity = reward_config.get(
+            "weight_validity", weight_validity
+        )
+        weight_schema = reward_config.get(
+            "weight_schema", weight_schema
+        )
         weight_reasoning = reward_config.get(
             "weight_reasoning", weight_reasoning
         )
@@ -400,8 +410,12 @@ def build_reward_function(
         weight_reasoning = 0.0
         total_vs = weight_validity + weight_schema
         if total_vs > 0:
-            weight_validity += reasoning_share * (weight_validity / total_vs)
-            weight_schema += reasoning_share * (weight_schema / total_vs)
+            weight_validity += reasoning_share * (
+                weight_validity / total_vs
+            )
+            weight_schema += reasoning_share * (
+                weight_schema / total_vs
+            )
 
     print(
         f"Reward weights — format={weight_format:.2f} validity={weight_validity:.2f} "
@@ -412,7 +426,10 @@ def build_reward_function(
     def _instruction_from_prompt(prompt: Any) -> str:
         if isinstance(prompt, list):
             for msg in reversed(prompt):
-                if isinstance(msg, dict) and msg.get("role") == "user":
+                if (
+                    isinstance(msg, dict)
+                    and msg.get("role") == "user"
+                ):
                     return msg.get("content", "")
         return str(prompt) if prompt is not None else ""
 

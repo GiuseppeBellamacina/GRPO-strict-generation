@@ -17,11 +17,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import torch  # noqa: E402
+import wandb  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 from tqdm import tqdm  # noqa: E402
-from transformers import PreTrainedModel, PreTrainedTokenizerBase  # noqa: E402
+from transformers import (
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)  # noqa: E402
 
-import wandb  # noqa: E402
 from src.datasets.dataloader import (  # noqa: E402
     format_prompt_for_model,
     load_synthetic_dataset,
@@ -32,7 +35,10 @@ from src.models.model_loader import (  # noqa: E402
     load_tokenizer,
 )
 from src.utils.config import load_config  # noqa: E402
-from src.utils.metrics import compute_detailed_metrics, pass_at_k  # noqa: E402
+from src.utils.metrics import (
+    compute_detailed_metrics,
+    pass_at_k,
+)  # noqa: E402
 
 load_dotenv()
 
@@ -52,7 +58,9 @@ def generate_completions(
     """
     all_completions: list[list[str]] = []
 
-    for i in tqdm(range(0, len(prompts), batch_size), desc="Generating"):
+    for i in tqdm(
+        range(0, len(prompts), batch_size), desc="Generating"
+    ):
         batch_prompts = prompts[i : i + batch_size]
 
         inputs = tokenizer(
@@ -66,7 +74,9 @@ def generate_completions(
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=generation_config.get("max_new_tokens", 512),
+                max_new_tokens=generation_config.get(
+                    "max_new_tokens", 512
+                ),
                 temperature=generation_config.get("temperature", 0.7),
                 top_p=generation_config.get("top_p", 0.95),
                 do_sample=generation_config.get("do_sample", True),
@@ -81,7 +91,9 @@ def generate_completions(
             for seq_idx in range(num_return_sequences):
                 idx = j * num_return_sequences + seq_idx
                 generated_ids = outputs[idx][input_len:]
-                text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                text = tokenizer.decode(
+                    generated_ids, skip_special_tokens=True
+                )
                 prompt_completions.append(text)
             all_completions.append(prompt_completions)
 
@@ -93,7 +105,10 @@ def main() -> None:
         description="Baseline evaluation of off-the-shelf LLMs"
     )
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to config YAML"
+        "--config",
+        type=str,
+        required=True,
+        help="Path to config YAML",
     )
     args = parser.parse_args()
 
@@ -104,7 +119,9 @@ def main() -> None:
 
     # Initialize wandb
     wandb_cfg = config.get("wandb", {})
-    eval_output_dir = eval_cfg.get("output_dir", "experiments/logs/baseline")
+    eval_output_dir = eval_cfg.get(
+        "output_dir", "experiments/logs/baseline"
+    )
     os.environ["WANDB_DIR"] = eval_output_dir
     wandb.init(
         project=wandb_cfg.get("project", "grpo-strict-generation"),
@@ -176,7 +193,9 @@ def main() -> None:
 
     # Detailed metrics (using first completion per prompt)
     first_completions = [comps[0] for comps in completions_per_prompt]
-    detailed = compute_detailed_metrics(first_completions, difficulties)
+    detailed = compute_detailed_metrics(
+        first_completions, difficulties
+    )
 
     print(f"\nOverall Pass@1: {detailed['overall_pass_rate']:.4f}")
     print("\nPer-category breakdown:")
@@ -187,11 +206,15 @@ def main() -> None:
 
     if detailed["error_distribution"]:
         print("\nTop error types:")
-        for err, count in list(detailed["error_distribution"].items())[:10]:
+        for err, count in list(
+            detailed["error_distribution"].items()
+        )[:10]:
             print(f"  {err}: {count}")
 
     # Save results
-    output_dir = Path(eval_cfg.get("output_dir", "experiments/logs/baseline"))
+    output_dir = Path(
+        eval_cfg.get("output_dir", "experiments/logs/baseline")
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = {
@@ -225,11 +248,15 @@ def main() -> None:
 
     # Log to wandb — solo la figura verticale, niente scalari sparsi
     categories = list(detailed["per_category"].keys())
-    cat_rates = [detailed["per_category"][c]["pass_rate"] for c in categories]
+    cat_rates = [
+        detailed["per_category"][c]["pass_rate"] for c in categories
+    ]
     fig, ax = plt.subplots(figsize=(max(6, len(categories) * 1.2), 4))
     ax.bar(categories, cat_rates, color="#2196F3")
     ax.set_ylabel("Pass@1")
-    ax.set_title(f"Baseline Evaluation – {model_cfg['name'].split('/')[-1]}")
+    ax.set_title(
+        f"Baseline Evaluation – {model_cfg['name'].split('/')[-1]}"
+    )
     ax.set_ylim(0, 1)
     for i, v in enumerate(cat_rates):
         ax.text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=9)

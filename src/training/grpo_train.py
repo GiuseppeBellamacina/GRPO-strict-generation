@@ -24,10 +24,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
+import wandb
 from dotenv import load_dotenv
 from trl import GRPOConfig, GRPOTrainer
 
-import wandb
 from datasets import Dataset
 from src.datasets.dataloader import (
     format_prompt_for_model,
@@ -35,7 +35,10 @@ from src.datasets.dataloader import (
 )
 from src.evaluation.eval_baseline import generate_completions
 from src.models.model_loader import load_model_and_tokenizer
-from src.training.callbacks import HighPrecisionLogCallback, WandbAlertCallback
+from src.training.callbacks import (
+    HighPrecisionLogCallback,
+    WandbAlertCallback,
+)
 from src.training.rewards import build_reward_function
 from src.utils.config import load_config
 from src.utils.distributed import is_main_process
@@ -50,7 +53,9 @@ def _build_grpo_config(
     full_config: dict[str, Any] | None = None,
 ) -> GRPOConfig:
     """Build a ``GRPOConfig`` from separated training and GRPO config dicts."""
-    output_dir = training_cfg.get("output_dir", "experiments/checkpoints/grpo")
+    output_dir = training_cfg.get(
+        "output_dir", "experiments/checkpoints/grpo"
+    )
     log_dir = training_cfg.get("log_dir", "experiments/logs/grpo")
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(log_dir).mkdir(parents=True, exist_ok=True)
@@ -60,14 +65,18 @@ def _build_grpo_config(
     if "warmup_ratio" in training_cfg:
         warmup_kwargs["warmup_ratio"] = training_cfg["warmup_ratio"]
     else:
-        warmup_kwargs["warmup_steps"] = training_cfg.get("warmup_steps", 50)
+        warmup_kwargs["warmup_steps"] = training_cfg.get(
+            "warmup_steps", 50
+        )
 
     # Resolve wandb run_name from config, append datetime for uniqueness
     wandb_cfg = (full_config or {}).get("wandb", {})
     from datetime import datetime
 
     base_name = wandb_cfg.get("run_name") or "grpo-train"
-    run_name = f"{base_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    run_name = (
+        f"{base_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
 
     return GRPOConfig(
         output_dir=output_dir,
@@ -80,7 +89,9 @@ def _build_grpo_config(
             "gradient_accumulation_steps", 8
         ),
         learning_rate=training_cfg.get("learning_rate", 5e-6),
-        lr_scheduler_type=training_cfg.get("lr_scheduler_type", "cosine"),
+        lr_scheduler_type=training_cfg.get(
+            "lr_scheduler_type", "cosine"
+        ),
         **warmup_kwargs,
         optim=training_cfg.get("optim", "paged_adamw_8bit"),
         weight_decay=training_cfg.get("weight_decay", 0.1),
@@ -92,7 +103,9 @@ def _build_grpo_config(
         save_total_limit=training_cfg.get("save_total_limit", 3),
         # GRPO-specific
         num_generations=grpo_cfg.get("num_generations", 4),
-        max_completion_length=grpo_cfg.get("max_completion_length", 512),
+        max_completion_length=grpo_cfg.get(
+            "max_completion_length", 512
+        ),
         max_prompt_length=grpo_cfg.get("max_prompt_length", 256),
         beta=grpo_cfg.get("beta", 0.04),
         temperature=grpo_cfg.get("temperature", 0.7),
@@ -100,7 +113,9 @@ def _build_grpo_config(
     )
 
 
-def _prepare_prompt_dataset(config: dict[str, Any], tokenizer: Any) -> Dataset:
+def _prepare_prompt_dataset(
+    config: dict[str, Any], tokenizer: Any
+) -> Dataset:
     """Load the synthetic dataset and format prompts for the model."""
     ds = load_synthetic_dataset(
         path=config["dataset"]["path"],
@@ -123,7 +138,10 @@ def main() -> None:
         description="GRPO training for strict code/JSON generation"
     )
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to config YAML"
+        "--config",
+        type=str,
+        required=True,
+        help="Path to config YAML",
     )
     parser.add_argument(
         "--resume",
@@ -176,16 +194,22 @@ def main() -> None:
         print("Loading dataset...")
     prompt_dataset = _prepare_prompt_dataset(config, tokenizer)
     if is_main_process():
-        print(f"[grpo] Training dataset: {len(prompt_dataset)} prompts")
+        print(
+            f"[grpo] Training dataset: {len(prompt_dataset)} prompts"
+        )
 
     # Build reward function
     thinking = config.get("dataset", {}).get("thinking", True)
     if is_main_process():
         print(f"[grpo] thinking={'on' if thinking else 'off'}")
-    reward_fn = build_reward_function(config["reward"], thinking=thinking)
+    reward_fn = build_reward_function(
+        config["reward"], thinking=thinking
+    )
 
     # Build GRPO config
-    grpo_config = _build_grpo_config(config["training"], config["grpo"], config)
+    grpo_config = _build_grpo_config(
+        config["training"], config["grpo"], config
+    )
     if is_main_process():
         print(
             f"[grpo] Hyperparams: max_steps={grpo_config.max_steps} "
@@ -200,7 +224,9 @@ def main() -> None:
     # ── Find resume checkpoint ────────────────────────────────────────────
     resume_from: str | None = None
     if args.resume:
-        ckpts = sorted(Path(grpo_config.output_dir).glob("checkpoint-*"))
+        ckpts = sorted(
+            Path(grpo_config.output_dir).glob("checkpoint-*")
+        )
         if ckpts:
             resume_from = str(ckpts[-1])
             if is_main_process():
@@ -212,11 +238,15 @@ def main() -> None:
     # Configure wandb via env vars — the GRPOTrainer handles wandb.init internally
     wandb_cfg = config.get("wandb", {})
     wandb_project = wandb_cfg.get("project", "grpo-strict-generation")
-    log_dir = config["training"].get("log_dir", "experiments/logs/grpo")
+    log_dir = config["training"].get(
+        "log_dir", "experiments/logs/grpo"
+    )
     os.environ["WANDB_PROJECT"] = wandb_project
     os.environ["WANDB_DIR"] = log_dir
     os.environ["WANDB_TAGS"] = ",".join(
-        wandb_cfg.get("tags", ["grpo", config["model"]["name"].split("/")[-1]])
+        wandb_cfg.get(
+            "tags", ["grpo", config["model"]["name"].split("/")[-1]]
+        )
     )
 
     # When resuming, find the previous wandb run id so we continue the same run
@@ -235,14 +265,20 @@ def main() -> None:
                     os.environ["WANDB_RUN_ID"] = wandb_run_id
                     os.environ["WANDB_RESUME"] = "must"
                     if is_main_process():
-                        print(f"[wandb] Resuming run id: {wandb_run_id}")
+                        print(
+                            f"[wandb] Resuming run id: {wandb_run_id}"
+                        )
         if "WANDB_RUN_ID" not in os.environ:
             os.environ["WANDB_RESUME"] = "allow"
             if is_main_process():
-                print("[wandb] No previous run found, starting new run")
+                print(
+                    "[wandb] No previous run found, starting new run"
+                )
 
     if is_main_process():
-        print(f"[wandb] project={wandb_project} run={grpo_config.run_name}")
+        print(
+            f"[wandb] project={wandb_project} run={grpo_config.run_name}"
+        )
 
     # Initialize trainer
     if is_main_process():
@@ -263,8 +299,12 @@ def main() -> None:
 
     # Save final model — skip if the last checkpoint already matches max_steps
     final_path = Path(grpo_config.output_dir) / "final"
-    last_ckpt = sorted(Path(grpo_config.output_dir).glob("checkpoint-*"))
-    last_step = int(last_ckpt[-1].name.split("-")[-1]) if last_ckpt else -1
+    last_ckpt = sorted(
+        Path(grpo_config.output_dir).glob("checkpoint-*")
+    )
+    last_step = (
+        int(last_ckpt[-1].name.split("-")[-1]) if last_ckpt else -1
+    )
     if last_step == grpo_config.max_steps:
         # Last checkpoint IS the final model — just symlink/copy reference
         if is_main_process():
@@ -289,7 +329,9 @@ def main() -> None:
     _select_best_checkpoint(config, grpo_config.output_dir)
 
 
-def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
+def _select_best_checkpoint(
+    config: dict[str, Any], output_dir: str
+) -> None:
     """Evaluate each checkpoint on the test set and symlink the best one."""
     if not is_main_process():
         return
@@ -320,7 +362,9 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
     difficulties = list(eval_ds["difficulty"])
 
     gen_config = {
-        "max_new_tokens": config["grpo"].get("max_completion_length", 512),
+        "max_new_tokens": config["grpo"].get(
+            "max_completion_length", 512
+        ),
         "temperature": 0.7,
         "top_p": 0.95,
         "do_sample": True,
@@ -345,13 +389,39 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
 
     for ckpt_path in candidates:
         print(f"\nEvaluating {ckpt_path.name}...")
-        # Override model name to load from checkpoint
-        ckpt_config = {
-            **eval_model_config,
-            "model": {**eval_model_config["model"], "name": str(ckpt_path)},
-        }
+        # Check if this is a PEFT checkpoint (has adapter_config.json)
+        is_peft = (ckpt_path / "adapter_config.json").exists()
+
         try:
-            ckpt_model, ckpt_tokenizer = load_model_and_tokenizer(ckpt_config)
+            if is_peft:
+                # Load base model + merge LoRA adapters
+                from peft import PeftModel
+
+                base_config = {
+                    **eval_model_config,
+                    "model": {
+                        **eval_model_config["model"],
+                    },
+                }
+                ckpt_model, ckpt_tokenizer = load_model_and_tokenizer(
+                    base_config
+                )
+                ckpt_model = PeftModel.from_pretrained(
+                    ckpt_model, str(ckpt_path)
+                )
+                ckpt_model = ckpt_model.merge_and_unload()
+            else:
+                # Full model checkpoint
+                ckpt_config = {
+                    **eval_model_config,
+                    "model": {
+                        **eval_model_config["model"],
+                        "name": str(ckpt_path),
+                    },
+                }
+                ckpt_model, ckpt_tokenizer = load_model_and_tokenizer(
+                    ckpt_config
+                )
         except Exception as e:
             print(f"  Failed to load {ckpt_path.name}: {e}")
             continue
@@ -389,7 +459,9 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
     print(f"{'='*50}")
     for name, pr in results:
         marker = (
-            " <-- BEST" if name == (best_path.name if best_path else "") else ""
+            " <-- BEST"
+            if name == (best_path.name if best_path else "")
+            else ""
         )
         print(f"  {name}: {pr:.4f}{marker}")
 
@@ -399,7 +471,9 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
         if best_dest.exists():
             shutil.rmtree(best_dest)
         shutil.copytree(best_path, best_dest)
-        print(f"\nBest checkpoint ({best_path.name}) copied to {best_dest}")
+        print(
+            f"\nBest checkpoint ({best_path.name}) copied to {best_dest}"
+        )
     elif best_path:
         print(
             f"\nFinal model is already the best (pass@1 = {best_pass_rate:.4f})"
@@ -407,12 +481,16 @@ def _select_best_checkpoint(config: dict[str, Any], output_dir: str) -> None:
 
     # ── Save results as JSON ──────────────────────────────────────────
     results_json = {
-        "checkpoints": [{"name": n, "pass_rate": p} for n, p in results],
+        "checkpoints": [
+            {"name": n, "pass_rate": p} for n, p in results
+        ],
         "best": best_path.name if best_path else None,
         "best_pass_rate": best_pass_rate,
     }
     json_path = output_path / "checkpoint_eval_results.json"
-    json_path.write_text(json.dumps(results_json, indent=2), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(results_json, indent=2), encoding="utf-8"
+    )
     print(f"Checkpoint eval results saved to {json_path}")
 
     # ── Save comparison figure ────────────────────────────────────────

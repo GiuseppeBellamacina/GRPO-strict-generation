@@ -14,7 +14,11 @@ import warnings
 from typing import Any
 
 import torch
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import (
+    LoraConfig,
+    get_peft_model,
+    prepare_model_for_kbit_training,
+)
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -47,8 +51,10 @@ def load_tokenizer(model_name: str) -> PreTrainedTokenizerBase:
     """Load and configure the tokenizer."""
     if is_main_process():
         print(f"[tokenizer] Loading tokenizer: {model_name}")
-    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
-        model_name, trust_remote_code=True
+    tokenizer: PreTrainedTokenizerBase = (
+        AutoTokenizer.from_pretrained(
+            model_name, trust_remote_code=True
+        )
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

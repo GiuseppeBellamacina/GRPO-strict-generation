@@ -120,9 +120,9 @@ def plot_error_distribution(
         return
 
     # Top 10 errors
-    sorted_errors = sorted(errors.items(), key=lambda x: x[1], reverse=True)[
-        :10
-    ]
+    sorted_errors = sorted(
+        errors.items(), key=lambda x: x[1], reverse=True
+    )[:10]
     labels, counts = zip(*sorted_errors)
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -158,7 +158,9 @@ def plot_training_reward_curve(
         # Try looking one level up or in checkpoints
         for candidate in [
             Path(log_dir) / "trainer_state.json",
-            Path(log_dir).parent / "checkpoint-latest" / "trainer_state.json",
+            Path(log_dir).parent
+            / "checkpoint-latest"
+            / "trainer_state.json",
         ]:
             if candidate.exists():
                 state_path = candidate
@@ -173,13 +175,21 @@ def plot_training_reward_curve(
     state = json.loads(state_path.read_text(encoding="utf-8"))
     log_history = state.get("log_history", [])
 
-    steps = [entry["step"] for entry in log_history if "reward" in entry]
-    rewards = [entry["reward"] for entry in log_history if "reward" in entry]
+    steps = [
+        entry["step"] for entry in log_history if "reward" in entry
+    ]
+    rewards = [
+        entry["reward"] for entry in log_history if "reward" in entry
+    ]
 
     if not steps:
         # Try loss instead
-        steps = [entry["step"] for entry in log_history if "loss" in entry]
-        rewards = [entry["loss"] for entry in log_history if "loss" in entry]
+        steps = [
+            entry["step"] for entry in log_history if "loss" in entry
+        ]
+        rewards = [
+            entry["loss"] for entry in log_history if "loss" in entry
+        ]
         ylabel = "Loss"
     else:
         ylabel = "Mean Reward"
@@ -223,7 +233,9 @@ def plot_baseline_vs_grpo_comparison(
     )
     labels = ["overall"] + all_cats
     b_values = [baseline_metrics["overall_pass_rate"]] + [
-        baseline_metrics["per_category"].get(c, {}).get("pass_rate", 0.0)
+        baseline_metrics["per_category"]
+        .get(c, {})
+        .get("pass_rate", 0.0)
         for c in all_cats
     ]
     g_values = [grpo_metrics["overall_pass_rate"]] + [
@@ -272,7 +284,9 @@ def plot_baseline_vs_grpo_comparison(
     # ── Delta bar: improvement per category ──────────────────────────────────
     ax2 = axes[1]
     bar_colors = ["#2ca02c" if d >= 0 else "#d62728" for d in deltas]
-    bars_d = ax2.bar(x, deltas, width * 1.8, color=bar_colors, alpha=0.85)
+    bars_d = ax2.bar(
+        x, deltas, width * 1.8, color=bar_colors, alpha=0.85
+    )
     ax2.axhline(0, color="black", linewidth=0.8, linestyle="--")
     ax2.set_ylabel("Δ Pass@1 (GRPO − Baseline)")
     ax2.set_title("Delta per Category")

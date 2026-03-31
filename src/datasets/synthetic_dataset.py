@@ -77,7 +77,8 @@ def generate_dataset(
     """Generate the full synthetic dataset as a HuggingFace DatasetDict."""
     rng = random.Random(seed)
     samples = [
-        generate_sample(rng, thinking=thinking) for _ in range(num_samples)
+        generate_sample(rng, thinking=thinking)
+        for _ in range(num_samples)
     ]
 
     # Deterministic split
@@ -102,14 +103,25 @@ def main() -> None:
         description="Generate synthetic JSON prompt dataset"
     )
     parser.add_argument(
-        "--output", type=str, default="data/synthetic", help="Output directory"
+        "--output",
+        type=str,
+        default="data/synthetic",
+        help="Output directory",
     )
     parser.add_argument(
-        "--num_samples", type=int, default=5000, help="Total number of samples"
+        "--num_samples",
+        type=int,
+        default=5000,
+        help="Total number of samples",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
-        "--test_ratio", type=float, default=0.2, help="Fraction for test split"
+        "--seed", type=int, default=42, help="Random seed"
+    )
+    parser.add_argument(
+        "--test_ratio",
+        type=float,
+        default=0.2,
+        help="Fraction for test split",
     )
     parser.add_argument(
         "--config",
@@ -159,9 +171,12 @@ def main() -> None:
 
     # Also save a human-readable preview
     preview_path = out_path / "preview.json"
-    preview = [ds["train"][i] for i in range(min(10, len(ds["train"])))]
+    preview = [
+        ds["train"][i] for i in range(min(10, len(ds["train"])))
+    ]
     preview_path.write_text(
-        json.dumps(preview, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(preview, indent=2, ensure_ascii=False),
+        encoding="utf-8",
     )
 
     print(f"Dataset saved to {out_path}")

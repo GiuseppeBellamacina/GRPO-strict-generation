@@ -34,7 +34,9 @@ class HighPrecisionLogCallback(TrainerCallback):
             return
         parts = [f"step={state.global_step}"]
         for k, v in logs.items():
-            parts.append(f"{k}={v:.8f}" if isinstance(v, float) else f"{k}={v}")
+            parts.append(
+                f"{k}={v:.8f}" if isinstance(v, float) else f"{k}={v}"
+            )
         print("  " + "  ".join(parts))
 
 

@@ -49,13 +49,18 @@ def generate_gold_completions(
     from src.training.rewards import extract_code_block
 
     gold = []
-    for i in tqdm(range(len(dataset)), desc="Generating gold completions"):
+    for i in tqdm(
+        range(len(dataset)), desc="Generating gold completions"
+    ):
         sample = dataset[i]
         prompt = format_prompt_for_model(sample, tokenizer)
 
         # Try generating a valid completion
         inputs = tokenizer(
-            prompt, return_tensors="pt", truncation=True, max_length=512
+            prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512,
         )
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
@@ -99,7 +104,10 @@ def main() -> None:
         description="SFT training for comparison with GRPO"
     )
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to config YAML"
+        "--config",
+        type=str,
+        required=True,
+        help="Path to config YAML",
     )
     parser.add_argument(
         "--skip_gold_gen",
@@ -139,20 +147,31 @@ def main() -> None:
         print(f"[sft] Training samples: {len(train_ds)}")
 
     # Generate or load gold completions
-    output_dir = training_cfg.get("output_dir", "experiments/checkpoints/sft")
+    output_dir = training_cfg.get(
+        "output_dir", "experiments/checkpoints/sft"
+    )
     gold_path = Path(output_dir) / "gold_completions.json"
 
     if args.skip_gold_gen and gold_path.exists():
         if is_main_process():
-            print(f"Loading existing gold completions from {gold_path}")
-        gold_completions = json.loads(gold_path.read_text(encoding="utf-8"))
+            print(
+                f"Loading existing gold completions from {gold_path}"
+            )
+        gold_completions = json.loads(
+            gold_path.read_text(encoding="utf-8")
+        )
     else:
         if is_main_process():
-            print("Generating gold completions (this may take a while)...")
-        gold_completions = generate_gold_completions(model, tokenizer, train_ds)
+            print(
+                "Generating gold completions (this may take a while)..."
+            )
+        gold_completions = generate_gold_completions(
+            model, tokenizer, train_ds
+        )
         gold_path.parent.mkdir(parents=True, exist_ok=True)
         gold_path.write_text(
-            json.dumps(gold_completions, ensure_ascii=False), encoding="utf-8"
+            json.dumps(gold_completions, ensure_ascii=False),
+            encoding="utf-8",
         )
         if is_main_process():
             print(f"Gold completions saved to {gold_path}")
@@ -160,10 +179,14 @@ def main() -> None:
     # Build SFT dataset with full conversations
     from src.datasets.dataloader import prepare_sft_dataset
 
-    sft_data = prepare_sft_dataset(train_ds, gold_completions, tokenizer)
+    sft_data = prepare_sft_dataset(
+        train_ds, gold_completions, tokenizer
+    )
     sft_dataset = Dataset.from_list(sft_data)
     if is_main_process():
-        print(f"[sft] SFT dataset: {len(sft_dataset)} conversation pairs")
+        print(
+            f"[sft] SFT dataset: {len(sft_dataset)} conversation pairs"
+        )
 
     # Configure SFT
     log_dir = training_cfg.get("log_dir", "experiments/logs/sft")
@@ -184,7 +207,8 @@ def main() -> None:
             name=wandb_run_name,
             config=config,
             tags=wandb_cfg.get(
-                "tags", ["sft", config["model"]["name"].split("/")[-1]]
+                "tags",
+                ["sft", config["model"]["name"].split("/")[-1]],
             ),
         )
 
@@ -198,7 +222,9 @@ def main() -> None:
             "gradient_accumulation_steps", 4
         ),
         learning_rate=training_cfg.get("learning_rate", 2e-5),
-        lr_scheduler_type=training_cfg.get("lr_scheduler_type", "cosine"),
+        lr_scheduler_type=training_cfg.get(
+            "lr_scheduler_type", "cosine"
+        ),
         warmup_steps=training_cfg.get("warmup_steps", 50),
         bf16=training_cfg.get("bf16", True),
         logging_steps=training_cfg.get("logging_steps", 10),

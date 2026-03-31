@@ -40,7 +40,9 @@ def _detect_mode(cfg: dict) -> str:
 # Parse --config and --mode early to decide bootstrap
 _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument("--config", type=str, default=None)
-_parser.add_argument("--mode", type=str, default=None, choices=["grpo", "sft"])
+_parser.add_argument(
+    "--mode", type=str, default=None, choices=["grpo", "sft"]
+)
 _early_args, _ = _parser.parse_known_args()
 
 _cfg = _peek_config(_early_args.config) if _early_args.config else {}

@@ -160,9 +160,13 @@ def generate_completions(
         past_key_values = outputs.past_key_values
 
         # Logits of last position → sample
-        logits = outputs.logits[:, -1, :] / cfg.temperature  # (B*G, vocab)
+        logits = (
+            outputs.logits[:, -1, :] / cfg.temperature
+        )  # (B*G, vocab)
         probs = F.softmax(logits, dim=-1)
-        next_token = torch.multinomial(probs, num_samples=1)  # (B*G, 1)
+        next_token = torch.multinomial(
+            probs, num_samples=1
+        )  # (B*G, 1)
         generated.append(next_token)
 
         # Prepare for next step (only feed the new token thanks to KV cache)
@@ -170,13 +174,17 @@ def generate_completions(
         cur_mask = torch.cat(
             [
                 cur_mask,
-                torch.ones(B * G, 1, device=device, dtype=cur_mask.dtype),
+                torch.ones(
+                    B * G, 1, device=device, dtype=cur_mask.dtype
+                ),
             ],
             dim=1,
         )
 
         # Stop if ALL sequences have hit EOS
-        all_done = (next_token.squeeze(-1) == tokenizer.eos_token_id).all()
+        all_done = (
+            next_token.squeeze(-1) == tokenizer.eos_token_id
+        ).all()
         if all_done:
             break
 
@@ -186,9 +194,9 @@ def generate_completions(
     # Build mask: tokens after EOS are padding
     comp_mask = torch.ones_like(completion_ids, dtype=torch.float32)
     for i in range(completion_ids.shape[0]):
-        eos_positions = (completion_ids[i] == tokenizer.eos_token_id).nonzero(
-            as_tuple=True
-        )[0]
+        eos_positions = (
+            completion_ids[i] == tokenizer.eos_token_id
+        ).nonzero(as_tuple=True)[0]
         if len(eos_positions) > 0:
             first_eos = eos_positions[0].item()
             comp_mask[i, first_eos + 1 :] = (
@@ -211,7 +219,9 @@ def compute_log_probs(
         log_probs: (N, L_comp)  — log π(token_t | x, y_{<t})
     """
     # Concatenate prompt + completion
-    input_ids = torch.cat([prompt_ids, completion_ids], dim=1)  # (N, L_p + L_c)
+    input_ids = torch.cat(
+        [prompt_ids, completion_ids], dim=1
+    )  # (N, L_p + L_c)
     attn_mask = torch.cat([prompt_mask, comp_mask], dim=1)
 
     outputs = model(input_ids=input_ids, attention_mask=attn_mask)  # type: ignore[operator]
@@ -221,7 +231,9 @@ def compute_log_probs(
     # logits[:, L_p-1 : L_p+L_c-1, :] predict completion tokens at positions L_p : L_p+L_c
     L_p = prompt_ids.shape[1]
     L_c = completion_ids.shape[1]
-    comp_logits = logits[:, L_p - 1 : L_p + L_c - 1, :]  # (N, L_c, vocab)
+    comp_logits = logits[
+        :, L_p - 1 : L_p + L_c - 1, :
+    ]  # (N, L_c, vocab)
 
     log_probs = F.log_softmax(comp_logits, dim=-1)  # (N, L_c, vocab)
 
@@ -265,7 +277,9 @@ def grpo_loss(
     # Approximate KL: KL ≈ exp(log π_ref - log π_θ) - (log π_ref - log π_θ) - 1
     # This is the "reverse KL approximation" used in the GRPO paper
     log_ratio_ref = ref_log_probs - policy_log_probs  # (B*G, T)
-    kl_per_token = torch.exp(log_ratio_ref) - log_ratio_ref - 1  # (B*G, T)
+    kl_per_token = (
+        torch.exp(log_ratio_ref) - log_ratio_ref - 1
+    )  # (B*G, T)
 
     # ── 4. Per-token objective: clipped_advantage - β * KL ──
     per_token_obj = clipped_obj - beta * kl_per_token  # (B*G, T)
@@ -313,7 +327,9 @@ def compute_group_advantages(
 
 
 def train(cfg: GRPOConfig) -> None:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
     print(f"Device: {device}")
     torch.manual_seed(cfg.seed)
 
@@ -370,7 +386,9 @@ def train(cfg: GRPOConfig) -> None:
             ]
             if hasattr(tokenizer, "apply_chat_template"):
                 text = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
                 )
             else:
                 text = f"{item['system']}\n{item['user']}\n"
@@ -413,7 +431,9 @@ def train(cfg: GRPOConfig) -> None:
         for g_idx in range(B * G):
             r = compute_reward(decoded_completions[g_idx])
             rewards.append(r)
-        rewards_t = torch.tensor(rewards, device=device, dtype=torch.float32)
+        rewards_t = torch.tensor(
+            rewards, device=device, dtype=torch.float32
+        )
 
         # ══════════════════════════════════════════════════════════════════════
         # STEP 3: Compute GROUP-RELATIVE ADVANTAGES
@@ -453,7 +473,11 @@ def train(cfg: GRPOConfig) -> None:
         # ══════════════════════════════════════════════════════════════════════
         model.train()
         cur_log_probs = compute_log_probs(
-            model, prompt_ids_rep, completion_ids, prompt_mask_rep, comp_mask
+            model,
+            prompt_ids_rep,
+            completion_ids,
+            prompt_mask_rep,
+            comp_mask,
         )
 
         # ══════════════════════════════════════════════════════════════════════
@@ -472,7 +496,9 @@ def train(cfg: GRPOConfig) -> None:
         loss.backward()
 
         # Gradient clipping for stability
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm=1.0
+        )
         optimizer.step()
         global_step += 1
 
@@ -502,7 +528,9 @@ if __name__ == "__main__":
         description="Custom PyTorch GRPO (educational)"
     )
     parser.add_argument(
-        "--model", type=str, default="Qwen/Qwen2.5-Coder-0.5B-Instruct"
+        "--model",
+        type=str,
+        default="Qwen/Qwen2.5-Coder-0.5B-Instruct",
     )
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--group_size", type=int, default=4)
