@@ -22,11 +22,10 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import torch
-import wandb
 from dotenv import load_dotenv
 
+import wandb
 from src.datasets.dataloader import (
     format_prompt_for_model,
     load_synthetic_dataset,
@@ -130,7 +129,9 @@ def main() -> None:
 
     # Output directory for eval results
     ckpt_name = Path(ckpt_path).name
-    eval_output = Path(config["training"].get("log_dir", "experiments/logs/grpo"))
+    eval_output = Path(
+        config["training"].get("log_dir", "experiments/logs/grpo")
+    )
     eval_output.mkdir(parents=True, exist_ok=True)
     figures_dir = eval_output / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
@@ -172,7 +173,8 @@ def main() -> None:
     }
     _, tokenizer = load_model_and_tokenizer(temp_config)
     prompts = [
-        format_prompt_for_model(test_ds[i], tokenizer) for i in range(len(test_ds))
+        format_prompt_for_model(test_ds[i], tokenizer)
+        for i in range(len(test_ds))
     ]
     difficulties = list(test_ds["difficulty"])
 
@@ -195,7 +197,9 @@ def main() -> None:
     print(f"\nGRPO Pass@1: {grpo_metrics['overall_pass_rate']:.4f}")
     print("\nPer-category:")
     for cat, stats in grpo_metrics["per_category"].items():
-        print(f"  {cat}: {stats['pass_rate']:.4f} ({stats['valid']}/{stats['total']})")
+        print(
+            f"  {cat}: {stats['pass_rate']:.4f} ({stats['valid']}/{stats['total']})"
+        )
 
     # Save GRPO results
     grpo_results = {
@@ -220,7 +224,9 @@ def main() -> None:
         baseline_path = Path(args.baseline_results)
         if baseline_path.exists():
             print(f"\nLoading baseline results from {baseline_path}...")
-            baseline_data = json.loads(baseline_path.read_text(encoding="utf-8"))
+            baseline_data = json.loads(
+                baseline_path.read_text(encoding="utf-8")
+            )
             baseline_metrics = baseline_data["detailed_metrics"]
         else:
             # Run baseline evaluation
@@ -252,11 +258,12 @@ def main() -> None:
         print(f"\n{'='*50}")
         print("Comparison: Baseline vs GRPO")
         print(f"{'='*50}")
-        print(
-            f"  Baseline Pass@1: {baseline_metrics['overall_pass_rate']:.4f}"
-        )
+        print(f"  Baseline Pass@1: {baseline_metrics['overall_pass_rate']:.4f}")
         print(f"  GRPO Pass@1:     {grpo_metrics['overall_pass_rate']:.4f}")
-        delta = grpo_metrics["overall_pass_rate"] - baseline_metrics["overall_pass_rate"]
+        delta = (
+            grpo_metrics["overall_pass_rate"]
+            - baseline_metrics["overall_pass_rate"]
+        )
         print(f"  Delta:           {delta:+.4f}")
 
         # Comparison figure
@@ -279,9 +286,7 @@ def main() -> None:
             "grpo_per_category": grpo_metrics["per_category"],
         }
         comp_path = eval_output / "comparison.json"
-        comp_path.write_text(
-            json.dumps(comparison, indent=2), encoding="utf-8"
-        )
+        comp_path.write_text(json.dumps(comparison, indent=2), encoding="utf-8")
         print(f"Comparison saved to {comp_path}")
 
     wandb.finish()

@@ -24,10 +24,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
-import wandb
 from dotenv import load_dotenv
 from trl import GRPOConfig, GRPOTrainer
 
+import wandb
 from datasets import Dataset
 from src.datasets.dataloader import (
     format_prompt_for_model,
