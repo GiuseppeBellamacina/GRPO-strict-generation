@@ -243,8 +243,22 @@ def plot_baseline_vs_grpo_comparison(
 
     # ── Grouped bar: pass rate per category ──────────────────────────────────
     ax = axes[0]
-    bars_b = ax.bar(x - width / 2, b_values, width, label="Baseline", color="#4C72B0", alpha=0.85)
-    bars_g = ax.bar(x + width / 2, g_values, width, label="Post-GRPO", color="#DD8452", alpha=0.85)
+    bars_b = ax.bar(
+        x - width / 2,
+        b_values,
+        width,
+        label="Baseline",
+        color="#4C72B0",
+        alpha=0.85,
+    )
+    bars_g = ax.bar(
+        x + width / 2,
+        g_values,
+        width,
+        label="Post-GRPO",
+        color="#DD8452",
+        alpha=0.85,
+    )
     ax.set_ylim(0, 1.15)
     ax.set_ylabel("Pass@1")
     ax.set_title("Pass Rate per Category")
@@ -271,4 +285,3 @@ def plot_baseline_vs_grpo_comparison(
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_path}")
-
