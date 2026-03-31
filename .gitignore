@@ -15,6 +15,9 @@ build/
 # Unsloth
 unsloth_compiled_cache/
 
+# GRPO trainer artifacts
+grpo_trainer_lora_model_*/
+
 # Jupyter
 .ipynb_checkpoints/
 
@@ -23,6 +26,7 @@ unsloth_compiled_cache/
 
 # Logs
 *.log
+logs/
 
 # Linting & formatting
 .ruff_cache/
