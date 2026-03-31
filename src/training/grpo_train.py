@@ -45,7 +45,9 @@ load_dotenv()
 
 
 def _build_grpo_config(
-    training_cfg: dict[str, Any], grpo_cfg: dict[str, Any]
+    training_cfg: dict[str, Any],
+    grpo_cfg: dict[str, Any],
+    full_config: dict[str, Any] | None = None,
 ) -> GRPOConfig:
     """Build a ``GRPOConfig`` from separated training and GRPO config dicts."""
     output_dir = training_cfg.get("output_dir", "experiments/checkpoints/grpo")
@@ -60,8 +62,16 @@ def _build_grpo_config(
     else:
         warmup_kwargs["warmup_steps"] = training_cfg.get("warmup_steps", 50)
 
+    # Resolve wandb run_name from config, append datetime for uniqueness
+    wandb_cfg = (full_config or {}).get("wandb", {})
+    from datetime import datetime
+
+    base_name = wandb_cfg.get("run_name") or "grpo-train"
+    run_name = f"{base_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
     return GRPOConfig(
         output_dir=output_dir,
+        run_name=run_name,
         max_steps=training_cfg.get("max_steps", 1000),
         per_device_train_batch_size=training_cfg.get(
             "per_device_train_batch_size", 1
@@ -175,7 +185,7 @@ def main() -> None:
     reward_fn = build_reward_function(config["reward"], thinking=thinking)
 
     # Build GRPO config
-    grpo_config = _build_grpo_config(config["training"], config["grpo"])
+    grpo_config = _build_grpo_config(config["training"], config["grpo"], config)
     if is_main_process():
         print(
             f"[grpo] Hyperparams: max_steps={grpo_config.max_steps} "
@@ -199,25 +209,40 @@ def main() -> None:
             if is_main_process():
                 print("No checkpoint found, starting from scratch.")
 
-    # Initialize wandb — save runs inside log_dir
+    # Configure wandb via env vars — the GRPOTrainer handles wandb.init internally
     wandb_cfg = config.get("wandb", {})
     wandb_project = wandb_cfg.get("project", "grpo-strict-generation")
-    wandb_run_name = wandb_cfg.get("run_name", "grpo-train")
     log_dir = config["training"].get("log_dir", "experiments/logs/grpo")
     os.environ["WANDB_PROJECT"] = wandb_project
     os.environ["WANDB_DIR"] = log_dir
+    os.environ["WANDB_TAGS"] = ",".join(
+        wandb_cfg.get("tags", ["grpo", config["model"]["name"].split("/")[-1]])
+    )
+
+    # When resuming, find the previous wandb run id so we continue the same run
+    if args.resume:
+        wandb_dir = Path(log_dir) / "wandb"
+        if wandb_dir.exists():
+            run_dirs = sorted(
+                wandb_dir.glob("offline-run-*"), key=lambda p: p.name
+            )
+            if run_dirs:
+                # Run dir name format: offline-run-YYYYMMDD_HHMMSS-<run_id>
+                last_run_dir = run_dirs[-1]
+                parts = last_run_dir.name.split("-")
+                if len(parts) >= 4:
+                    wandb_run_id = parts[-1]
+                    os.environ["WANDB_RUN_ID"] = wandb_run_id
+                    os.environ["WANDB_RESUME"] = "must"
+                    if is_main_process():
+                        print(f"[wandb] Resuming run id: {wandb_run_id}")
+        if "WANDB_RUN_ID" not in os.environ:
+            os.environ["WANDB_RESUME"] = "allow"
+            if is_main_process():
+                print("[wandb] No previous run found, starting new run")
+
     if is_main_process():
-        print(f"[wandb] project={wandb_project} run={wandb_run_name}")
-        wandb.init(
-            project=wandb_project,
-            name=wandb_run_name,
-            config=config,
-            tags=wandb_cfg.get(
-                "tags", ["grpo", config["model"]["name"].split("/")[-1]]
-            ),
-            dir=log_dir,
-            resume="allow" if args.resume else None,
-        )
+        print(f"[wandb] project={wandb_project} run={grpo_config.run_name}")
 
     # Initialize trainer
     if is_main_process():

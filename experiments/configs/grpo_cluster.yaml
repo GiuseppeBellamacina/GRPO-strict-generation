@@ -78,5 +78,5 @@ reward:
 # --- Weights & Biases ---
 wandb:
   project: "grpo-strict-generation"
-  run_name: null
+  run_name: "grpo-tinyllama-cluster"
   tags: ["grpo", "TinyLlama-1.1B", "json-only", "cluster-l40s"]

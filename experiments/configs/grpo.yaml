@@ -77,5 +77,5 @@ reward:
 # --- Weights & Biases ---
 wandb:
   project: "grpo-strict-generation" # nome del progetto su wandb
-  run_name: null # nome del run (null = auto-generato)
+  run_name: "grpo-tinyllama" # nome del run
   tags: ["grpo", "TinyLlama-1.1B", "json-only"] # tag per filtrare i run
