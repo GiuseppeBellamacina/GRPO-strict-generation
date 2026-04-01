@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import wandb
@@ -100,3 +101,24 @@ class WandbAlertCallback(TrainerCallback):
             text=f"Finished at step {state.global_step}/{args.max_steps}",
             level=wandb.AlertLevel.INFO,
         )
+
+
+class SaveWandbRunIdCallback(TrainerCallback):
+    """Persist the wandb run ID to a file so ``--resume`` can continue the
+    same W&B run instead of opening a new one."""
+
+    def __init__(self, run_id_file: Path) -> None:
+        self._run_id_file = run_id_file
+
+    def on_train_begin(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: Any,
+    ) -> None:
+        if not state.is_local_process_zero:
+            return
+        if wandb.run is not None:
+            self._run_id_file.write_text(wandb.run.id)
+            print(f"[wandb] Run id saved: {wandb.run.id}")

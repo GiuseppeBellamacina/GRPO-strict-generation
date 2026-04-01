@@ -37,6 +37,7 @@ from src.evaluation.eval_baseline import generate_completions
 from src.models.model_loader import load_model_and_tokenizer
 from src.training.callbacks import (
     HighPrecisionLogCallback,
+    SaveWandbRunIdCallback,
     WandbAlertCallback,
 )
 from src.training.rewards import build_reward_function
@@ -249,26 +250,42 @@ def main() -> None:
         )
     )
 
-    # When resuming, find the previous wandb run id so we continue the same run
+    # When resuming, restore the previous wandb run id so metrics continue on
+    # the same run in the W&B UI.  We try (in order):
+    #   1. A persisted .wandb_run_id file written by SaveWandbRunIdCallback
+    #   2. Parsing the most recent offline-run-* directory name (fallback)
+    wandb_run_id_file = Path(log_dir) / ".wandb_run_id"
     if args.resume:
-        wandb_dir = Path(log_dir) / "wandb"
-        if wandb_dir.exists():
-            run_dirs = sorted(
-                wandb_dir.glob("offline-run-*"), key=lambda p: p.name
+        run_id_found: str | None = None
+        # 1) Try the persisted file first (most reliable)
+        if wandb_run_id_file.exists():
+            run_id_found = (
+                wandb_run_id_file.read_text().strip() or None
             )
-            if run_dirs:
-                # Run dir name format: offline-run-YYYYMMDD_HHMMSS-<run_id>
-                last_run_dir = run_dirs[-1]
-                parts = last_run_dir.name.split("-")
-                if len(parts) >= 4:
-                    wandb_run_id = parts[-1]
-                    os.environ["WANDB_RUN_ID"] = wandb_run_id
-                    os.environ["WANDB_RESUME"] = "must"
-                    if is_main_process():
-                        print(
-                            f"[wandb] Resuming run id: {wandb_run_id}"
-                        )
-        if "WANDB_RUN_ID" not in os.environ:
+            if run_id_found and is_main_process():
+                print(
+                    f"[wandb] Resuming run id: {run_id_found} (from file)"
+                )
+        # 2) Fall back to directory name parsing
+        if not run_id_found:
+            wandb_dir = Path(log_dir) / "wandb"
+            if wandb_dir.exists():
+                run_dirs = sorted(
+                    wandb_dir.glob("offline-run-*"),
+                    key=lambda p: p.name,
+                )
+                if run_dirs:
+                    parts = run_dirs[-1].name.split("-")
+                    if len(parts) >= 4:
+                        run_id_found = parts[-1]
+                        if is_main_process():
+                            print(
+                                f"[wandb] Resuming run id: {run_id_found} (from dir)"
+                            )
+        if run_id_found:
+            os.environ["WANDB_RUN_ID"] = run_id_found
+            os.environ["WANDB_RESUME"] = "must"
+        else:
             os.environ["WANDB_RESUME"] = "allow"
             if is_main_process():
                 print(
@@ -289,7 +306,11 @@ def main() -> None:
         train_dataset=prompt_dataset,
         reward_funcs=reward_fn,  # type: ignore[arg-type]
         processing_class=tokenizer,  # type: ignore[arg-type]
-        callbacks=[HighPrecisionLogCallback(), WandbAlertCallback()],
+        callbacks=[
+            HighPrecisionLogCallback(),
+            WandbAlertCallback(),
+            SaveWandbRunIdCallback(wandb_run_id_file),
+        ],
     )
 
     # Train

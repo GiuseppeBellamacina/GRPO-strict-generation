@@ -156,24 +156,34 @@ function SyncWandb {
         return
     }
 
-    $runDirs = Get-ChildItem -Path $logsDir -Recurse -Directory -Filter "offline-run-*"
-    if ($runDirs.Count -eq 0) {
+    # Find all wandb/ directories that actually contain offline run subdirs.
+    # Using --sync-all on each wandb parent dir lets wandb handle multiple
+    # segments of the same resumed run (same run ID) correctly — syncing them
+    # one-by-one with plain `wandb sync` marks each as done separately and
+    # may leave resumed segments unmerged on the server.
+    $wandbDirs = Get-ChildItem -Path $logsDir -Recurse -Directory -Filter "wandb" |
+        Where-Object { (Get-ChildItem -Path $_.FullName -Directory -Filter "offline-run-*").Count -gt 0 }
+
+    if ($wandbDirs.Count -eq 0) {
         Write-Host "No offline runs found in experiments\logs\" -ForegroundColor Yellow
         return
     }
 
-    Write-Host "Found $($runDirs.Count) offline run(s):" -ForegroundColor Gray
+    Write-Host "Found $($wandbDirs.Count) wandb dir(s) with offline runs:" -ForegroundColor Gray
     $synced = 0
     $failed = 0
-    foreach ($run in $runDirs) {
-        $relPath = $run.FullName.Substring($LOCAL.Length + 1)
-        Write-Host "  [$($synced + $failed + 1)/$($runDirs.Count)] $relPath" -ForegroundColor Gray -NoNewline
-        $result = & wandb sync $run.FullName 2>&1
+    foreach ($wdir in $wandbDirs) {
+        $relPath = $wdir.FullName.Substring($LOCAL.Length + 1)
+        Write-Host "  Syncing $relPath ..." -ForegroundColor Gray -NoNewline
+        # --sync-all  : sync every run dir found inside, including resumed segments
+        # --include-synced : re-upload even dirs already marked as synced locally
+        $result = & wandb sync --sync-all --include-synced $wdir.FullName 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Host " OK" -ForegroundColor Green
             $synced++
         } else {
             Write-Host " FAILED" -ForegroundColor Red
+            Write-Host ($result | Out-String) -ForegroundColor DarkRed
             $failed++
         }
     }
