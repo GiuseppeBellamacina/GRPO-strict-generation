@@ -150,6 +150,19 @@ function DownloadWandb {
 function SyncWandb {
     Write-Host "Syncing wandb offline runs to wandb.ai..." -ForegroundColor Cyan
 
+    # Ensure wandb CLI is available — activate venv if needed
+    $venvActivate = Join-Path $LOCAL ".venv\Scripts\Activate.ps1"
+    if (-not (Get-Command wandb -ErrorAction SilentlyContinue)) {
+        if (Test-Path $venvActivate) {
+            Write-Host "  Activating .venv for wandb CLI..." -ForegroundColor Gray
+            & $venvActivate
+        }
+        if (-not (Get-Command wandb -ErrorAction SilentlyContinue)) {
+            Write-Host "wandb CLI not found. Install it with: pip install wandb" -ForegroundColor Red
+            return
+        }
+    }
+
     $logsDir = Join-Path $LOCAL "experiments\logs"
     if (-not (Test-Path $logsDir)) {
         Write-Host "No experiments/logs/ found. Run download-wandb first." -ForegroundColor Red
