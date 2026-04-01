@@ -1,7 +1,10 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("upload", "download", "download-logs", "download-checkpoints", "download-wandb", "sync-wandb")]
-    [string]$Action
+    [ValidateSet("upload", "download", "download-logs", "download-checkpoints", "download-wandb", "sync-wandb", "push", "pull")]
+    [string]$Action,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Path  # relative path for push/pull (e.g. "src/training/grpo_train.py" or "cluster/")
 )
 
 $CLUSTER_USER = "bllgpp02h24c351g"
@@ -179,6 +182,48 @@ function SyncWandb {
     Write-Host "Sync complete: $synced succeeded, $failed failed." -ForegroundColor $(if ($failed -gt 0) { "Yellow" } else { "Green" })
 }
 
+function Push {
+    if (-not $Path) {
+        Write-Host "Usage: .\sync_cluster.ps1 -Action push -Path <file-or-folder>" -ForegroundColor Red
+        return
+    }
+    $localPath = Join-Path $LOCAL $Path
+    if (-not (Test-Path $localPath)) {
+        Write-Host "Not found: $Path" -ForegroundColor Red
+        return
+    }
+    $remotePath = $Path -replace '\\', '/'
+    # Ensure remote parent directory exists
+    $remoteDir = ($remotePath | Split-Path) -replace '\\', '/'
+    if ($remoteDir) {
+        ssh $SSH_TARGET "mkdir -p ~/GRPO-strict-generation/$remoteDir"
+    }
+    if (Test-Path $localPath -PathType Container) {
+        # Directory: clean remote and upload
+        ssh $SSH_TARGET "rm -rf ~/GRPO-strict-generation/$remotePath; mkdir -p ~/GRPO-strict-generation/$remotePath"
+        scp -rq "$localPath/." "${REMOTE}/$remotePath/"
+    } else {
+        scp -q $localPath "${REMOTE}/$remotePath"
+    }
+    Write-Host "Pushed $Path -> cluster" -ForegroundColor Green
+}
+
+function Pull {
+    if (-not $Path) {
+        Write-Host "Usage: .\sync_cluster.ps1 -Action pull -Path <file-or-folder>" -ForegroundColor Red
+        return
+    }
+    $remotePath = $Path -replace '\\', '/'
+    $localPath = Join-Path $LOCAL $Path
+    # Ensure local parent directory exists
+    $localDir = Split-Path $localPath
+    if ($localDir) {
+        New-Item -ItemType Directory -Force -Path $localDir | Out-Null
+    }
+    scp -rq "${REMOTE}/$remotePath" $localPath
+    Write-Host "Pulled $Path <- cluster" -ForegroundColor Green
+}
+
 switch ($Action) {
     "upload"                { Upload }
     "download"              { DownloadAll }
@@ -186,4 +231,6 @@ switch ($Action) {
     "download-checkpoints"  { DownloadCheckpoints }
     "download-wandb"        { DownloadWandb }
     "sync-wandb"            { SyncWandb }
+    "push"                  { Push }
+    "pull"                  { Pull }
 }
