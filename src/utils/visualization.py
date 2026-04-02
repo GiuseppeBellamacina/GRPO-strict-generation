@@ -2,66 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-
-
-def plot_pass_at_k_comparison(
-    results: dict[str, dict[str, float]],
-    output_path: str = "experiments/logs/figures/pass_at_k_comparison.png",
-) -> None:
-    """Bar chart comparing Pass@k across models/methods.
-
-    Args:
-        results: Dict like {"Baseline 0.5B": {"pass@1": 0.2, ...}, "GRPO 1.5B": {...}}.
-        output_path: Where to save the figure.
-    """
-    sns.set_theme(style="whitegrid")
-
-    models = list(results.keys())
-    metrics = sorted({m for r in results.values() for m in r})
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    x = range(len(metrics))
-    width = 0.8 / len(models)
-
-    for i, model_name in enumerate(models):
-        values = [results[model_name].get(m, 0) for m in metrics]
-        offset = (i - len(models) / 2 + 0.5) * width
-        bars = ax.bar(
-            [xi + offset for xi in x],
-            values,
-            width,
-            label=model_name,
-            alpha=0.85,
-        )
-        for bar, val in zip(bars, values):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.01,
-                f"{val:.2f}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-            )
-
-    ax.set_xlabel("Metric")
-    ax.set_ylabel("Score")
-    ax.set_title("Pass@k Comparison: Baseline vs GRPO vs SFT")
-    ax.set_xticks(x)
-    ax.set_xticklabels(metrics)
-    ax.set_ylim(0, 1.1)
-    ax.legend()
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_path}")
 
 
 def plot_per_category_breakdown(
@@ -99,110 +44,6 @@ def plot_per_category_breakdown(
     ax.set_title(title)
     ax.set_ylim(0, 1.15)
     plt.xticks(rotation=30, ha="right")
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_path}")
-
-
-def plot_error_distribution(
-    detailed_metrics: dict,
-    output_path: str = "experiments/logs/figures/error_distribution.png",
-) -> None:
-    """Horizontal bar chart of error type distribution."""
-    sns.set_theme(style="whitegrid")
-    errors = detailed_metrics.get("error_distribution", {})
-
-    if not errors:
-        print("No errors to plot.")
-        return
-
-    # Top 10 errors
-    sorted_errors = sorted(
-        errors.items(), key=lambda x: x[1], reverse=True
-    )[:10]
-    labels, counts = zip(*sorted_errors)
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.barh(
-        labels,
-        counts,
-        color=sns.color_palette("Reds_r", len(labels)),
-        alpha=0.85,
-    )
-    ax.set_xlabel("Count")
-    ax.set_title("Top Error Types")
-    ax.invert_yaxis()
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_path}")
-
-
-def plot_training_reward_curve(
-    log_dir: str,
-    output_path: str = "experiments/logs/figures/training_reward_curve.png",
-) -> None:
-    """Plot reward over training steps from wandb logs.
-
-    Falls back to reading trainer_state.json if wandb events aren't available.
-    """
-    sns.set_theme(style="whitegrid")
-    state_path = Path(log_dir).parent / "trainer_state.json"
-
-    if not state_path.exists():
-        # Try looking one level up or in checkpoints
-        for candidate in [
-            Path(log_dir) / "trainer_state.json",
-            Path(log_dir).parent
-            / "checkpoint-latest"
-            / "trainer_state.json",
-        ]:
-            if candidate.exists():
-                state_path = candidate
-                break
-
-    if not state_path.exists():
-        print(
-            f"No trainer_state.json found near {log_dir}. Skipping reward curve."
-        )
-        return
-
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    log_history = state.get("log_history", [])
-
-    steps = [
-        entry["step"] for entry in log_history if "reward" in entry
-    ]
-    rewards = [
-        entry["reward"] for entry in log_history if "reward" in entry
-    ]
-
-    if not steps:
-        # Try loss instead
-        steps = [
-            entry["step"] for entry in log_history if "loss" in entry
-        ]
-        rewards = [
-            entry["loss"] for entry in log_history if "loss" in entry
-        ]
-        ylabel = "Loss"
-    else:
-        ylabel = "Mean Reward"
-
-    if not steps:
-        print("No reward or loss data in training logs.")
-        return
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(steps, rewards, linewidth=2, color="#2196F3")
-    ax.set_xlabel("Training Step")
-    ax.set_ylabel(ylabel)
-    ax.set_title("Training Progress")
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
@@ -408,6 +249,476 @@ def plot_curriculum_progression(
 
     fig.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_completions_error_breakdown(
+    completions_data: list[dict],
+    title: str = "Completion Validity",
+    output_path: str = "experiments/logs/figures/error_breakdown.png",
+) -> None:
+    """Pie chart of error types + per-difficulty error type distribution.
+
+    Args:
+        completions_data: List of dicts with keys: valid, error (optional), difficulty.
+        title: Figure suptitle.
+        output_path: Where to save the figure.
+    """
+    from collections import Counter
+
+    sns.set_theme(style="whitegrid")
+
+    # Classify each completion
+    labels_list: list[str] = []
+    for entry in completions_data:
+        if entry["valid"]:
+            labels_list.append("valid")
+        else:
+            err = entry.get("error", "unknown")
+            if err.startswith("json_error"):
+                labels_list.append("json_error")
+            else:
+                labels_list.append(err)
+
+    counts = Counter(labels_list)
+    total = len(labels_list)
+
+    # Per-difficulty error breakdown
+    diff_errors: dict[str, Counter] = {}
+    for entry, lbl in zip(completions_data, labels_list):
+        d = entry["difficulty"]
+        if d not in diff_errors:
+            diff_errors[d] = Counter()
+        diff_errors[d][lbl] += 1
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    fig.suptitle(title, fontsize=13, fontweight="bold")
+
+    # Left: pie chart
+    ax = axes[0]
+    pie_labels = list(counts.keys())
+    pie_values = list(counts.values())
+    color_map = {
+        "valid": "#2ca02c",
+        "no_code_block": "#d62728",
+        "json_error": "#ff7f0e",
+    }
+    colors = [color_map.get(lbl, "#9467bd") for lbl in pie_labels]
+    ax.pie(
+        pie_values,
+        labels=[
+            f"{lbl}\n({v}/{total})"
+            for lbl, v in zip(pie_labels, pie_values)
+        ],
+        colors=colors,
+        autopct="%.1f%%",
+        startangle=90,
+    )
+    ax.set_title("Error Type Distribution")
+
+    # Right: stacked bar — error types per difficulty
+    ax2 = axes[1]
+    diffs_sorted = sorted(diff_errors.keys())
+    all_types = sorted(set(labels_list))
+    x = np.arange(len(diffs_sorted))
+    bottom = np.zeros(len(diffs_sorted))
+
+    for err_type in all_types:
+        values = np.array(
+            [diff_errors[d].get(err_type, 0) for d in diffs_sorted],
+            dtype=float,
+        )
+        color = color_map.get(err_type, "#9467bd")
+        ax2.bar(
+            x,
+            values,
+            bottom=bottom,
+            label=err_type,
+            color=color,
+            alpha=0.85,
+        )
+        for i, v in enumerate(values):
+            if v > 0:
+                ax2.text(
+                    x[i],
+                    bottom[i] + v / 2,
+                    f"{int(v)}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                )
+        bottom += values
+
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(diffs_sorted)
+    ax2.set_ylabel("Count")
+    ax2.set_title("Error Types by Difficulty")
+    ax2.legend(fontsize=8)
+
+    fig.tight_layout()
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_error_evolution(
+    stage_completions: list[tuple[str, list[dict]]],
+    model_name: str = "",
+    output_path: str = "experiments/logs/figures/error_evolution.png",
+) -> None:
+    """Stacked bar chart showing how error types evolve across curriculum stages.
+
+    Args:
+        stage_completions: List of (label, completions_data) tuples, one per stage.
+        model_name: Short model name for the title.
+        output_path: Where to save the figure.
+    """
+    sns.set_theme(style="whitegrid")
+
+    # Classify errors per stage
+    all_error_types: set[str] = {"valid"}
+    stage_counts: list[dict[str, int]] = []
+    stage_labels: list[str] = []
+    for label, comps in stage_completions:
+        stage_labels.append(label)
+        counts: dict[str, int] = {"valid": 0}
+        for entry in comps:
+            if entry["valid"]:
+                counts["valid"] = counts.get("valid", 0) + 1
+            else:
+                err = entry.get("error", "unknown")
+                if err.startswith("json_error"):
+                    err = "json_error"
+                counts[err] = counts.get(err, 0) + 1
+                all_error_types.add(err)
+        stage_counts.append(counts)
+
+    error_types = sorted(all_error_types - {"valid"})
+    categories = ["valid"] + error_types
+
+    x = np.arange(len(stage_labels))
+    fig, ax = plt.subplots(
+        figsize=(max(8, len(stage_labels) * 2.5), 5)
+    )
+
+    color_map = {
+        "valid": "#2ca02c",
+        "no_code_block": "#d62728",
+        "json_error": "#ff7f0e",
+    }
+    bottom = np.zeros(len(stage_labels))
+
+    for cat in categories:
+        values = []
+        for sc in stage_counts:
+            total = sum(sc.values())
+            values.append(sc.get(cat, 0) / max(total, 1) * 100)
+        values_arr = np.array(values)
+        color = color_map.get(cat, "#9467bd")
+        ax.bar(
+            x,
+            values_arr,
+            bottom=bottom,
+            label=cat,
+            color=color,
+            alpha=0.85,
+        )
+        for i, v in enumerate(values_arr):
+            if v > 5:
+                ax.text(
+                    x[i],
+                    bottom[i] + v / 2,
+                    f"{v:.0f}%",
+                    ha="center",
+                    va="center",
+                    fontsize=9,
+                    fontweight="bold",
+                )
+        bottom += values_arr
+
+    suptitle = "Error Evolution Across Stages"
+    if model_name:
+        suptitle += f" — {model_name}"
+    ax.set_title(suptitle, fontsize=13, fontweight="bold")
+    ax.set_ylabel("Percentage (%)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(stage_labels, rotation=15, ha="right")
+    ax.set_ylim(0, 105)
+    ax.legend(loc="upper right")
+
+    fig.tight_layout()
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_completion_length_distribution(
+    completions_data: list[dict],
+    title: str = "Completion Length Distribution",
+    output_path: str = "experiments/logs/figures/completion_lengths.png",
+) -> None:
+    """Histogram of completion lengths (chars), split by valid vs invalid.
+
+    Args:
+        completions_data: List of dicts with keys: completion, valid.
+        title: Figure title.
+        output_path: Where to save the figure.
+    """
+    sns.set_theme(style="whitegrid")
+
+    valid_lens = [
+        len(e["completion"]) for e in completions_data if e["valid"]
+    ]
+    invalid_lens = [
+        len(e["completion"])
+        for e in completions_data
+        if not e["valid"]
+    ]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    bins = np.linspace(
+        0,
+        max((valid_lens or [0]) + (invalid_lens or [0])) * 1.05,
+        30,
+    )
+    if valid_lens:
+        ax.hist(
+            valid_lens,
+            bins=bins,
+            alpha=0.7,
+            label=f"Valid (n={len(valid_lens)})",
+            color="#2ca02c",
+        )
+    if invalid_lens:
+        ax.hist(
+            invalid_lens,
+            bins=bins,
+            alpha=0.7,
+            label=f"Invalid (n={len(invalid_lens)})",
+            color="#d62728",
+        )
+
+    ax.set_xlabel("Completion Length (chars)")
+    ax.set_ylabel("Count")
+    ax.set_title(title)
+    ax.legend()
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_stage_difficulty_heatmap(
+    stage_completions: list[tuple[str, list[dict]]],
+    model_name: str = "",
+    output_path: str = "experiments/logs/figures/stage_difficulty_heatmap.png",
+) -> None:
+    """Heatmap of pass rates: rows = stages, columns = difficulty levels.
+
+    Args:
+        stage_completions: List of (label, completions_data) tuples.
+        model_name: Short model name for the title.
+        output_path: Where to save the figure.
+    """
+    sns.set_theme(style="whitegrid")
+
+    # Collect all difficulties
+    all_diffs: set[str] = set()
+    for _, comps in stage_completions:
+        for e in comps:
+            all_diffs.add(e["difficulty"])
+    diffs_sorted = sorted(all_diffs)
+
+    stage_labels = [label for label, _ in stage_completions]
+    matrix = np.zeros((len(stage_labels), len(diffs_sorted)))
+
+    for i, (_, comps) in enumerate(stage_completions):
+        diff_stats: dict[str, dict[str, int]] = {}
+        for e in comps:
+            d = e["difficulty"]
+            if d not in diff_stats:
+                diff_stats[d] = {"valid": 0, "total": 0}
+            diff_stats[d]["total"] += 1
+            if e["valid"]:
+                diff_stats[d]["valid"] += 1
+        for j, d in enumerate(diffs_sorted):
+            s = diff_stats.get(d, {"valid": 0, "total": 1})
+            matrix[i, j] = s["valid"] / max(s["total"], 1)
+
+    fig, ax = plt.subplots(
+        figsize=(
+            max(6, len(diffs_sorted) * 2),
+            max(4, len(stage_labels) * 0.8),
+        )
+    )
+    im = ax.imshow(
+        matrix, cmap="RdYlGn", vmin=0, vmax=1, aspect="auto"
+    )
+
+    ax.set_xticks(range(len(diffs_sorted)))
+    ax.set_xticklabels(diffs_sorted)
+    ax.set_yticks(range(len(stage_labels)))
+    ax.set_yticklabels(stage_labels)
+
+    # Annotate cells with pass rate values
+    for i in range(len(stage_labels)):
+        for j in range(len(diffs_sorted)):
+            val = matrix[i, j]
+            text_color = (
+                "white" if val < 0.4 or val > 0.8 else "black"
+            )
+            ax.text(
+                j,
+                i,
+                f"{val:.2f}",
+                ha="center",
+                va="center",
+                fontsize=10,
+                color=text_color,
+                fontweight="bold",
+            )
+
+    fig.colorbar(im, ax=ax, label="Pass@1")
+    suptitle = "Pass Rate: Stage × Difficulty"
+    if model_name:
+        suptitle += f" — {model_name}"
+    ax.set_title(suptitle, fontsize=13, fontweight="bold")
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_rescued_vs_regressed(
+    baseline_completions: list[dict],
+    grpo_completions: list[dict],
+    model_name: str = "",
+    output_path: str = "experiments/logs/figures/rescued_vs_regressed.png",
+) -> None:
+    """Bar chart showing per-prompt outcome changes: rescued, regressed, both-pass, both-fail.
+
+    Args:
+        baseline_completions: List of dicts with valid, difficulty (baseline model).
+        grpo_completions: List of dicts with valid, difficulty (GRPO model).
+        model_name: Short model name for the title.
+        output_path: Where to save the figure.
+    """
+    sns.set_theme(style="whitegrid")
+
+    categories = {
+        "rescued": 0,
+        "regressed": 0,
+        "both_pass": 0,
+        "both_fail": 0,
+    }
+    diff_cats: dict[str, dict[str, int]] = {}
+
+    for bl, gr in zip(baseline_completions, grpo_completions):
+        bl_ok = bl["valid"]
+        gr_ok = gr["valid"]
+        diff = bl["difficulty"]
+
+        if diff not in diff_cats:
+            diff_cats[diff] = {
+                "rescued": 0,
+                "regressed": 0,
+                "both_pass": 0,
+                "both_fail": 0,
+            }
+
+        if not bl_ok and gr_ok:
+            cat = "rescued"
+        elif bl_ok and not gr_ok:
+            cat = "regressed"
+        elif bl_ok and gr_ok:
+            cat = "both_pass"
+        else:
+            cat = "both_fail"
+
+        categories[cat] += 1
+        diff_cats[diff][cat] += 1
+
+    total = sum(categories.values())
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    suptitle = "Rescued vs Regressed"
+    if model_name:
+        suptitle += f" — {model_name}"
+    fig.suptitle(suptitle, fontsize=13, fontweight="bold")
+
+    # Left: overall pie
+    ax = axes[0]
+    color_map = {
+        "rescued": "#2ca02c",
+        "regressed": "#d62728",
+        "both_pass": "#1f77b4",
+        "both_fail": "#7f7f7f",
+    }
+    pie_labels = [k for k, v in categories.items() if v > 0]
+    pie_values = [categories[k] for k in pie_labels]
+    pie_colors = [color_map[k] for k in pie_labels]
+    ax.pie(
+        pie_values,
+        labels=[
+            f"{lbl}\n({v}/{total})"
+            for lbl, v in zip(pie_labels, pie_values)
+        ],
+        colors=pie_colors,
+        autopct="%.1f%%",
+        startangle=90,
+    )
+    ax.set_title("Overall")
+
+    # Right: stacked bar per difficulty
+    ax2 = axes[1]
+    diffs_sorted = sorted(diff_cats.keys())
+    x = np.arange(len(diffs_sorted))
+    bottom = np.zeros(len(diffs_sorted))
+    cat_order = ["both_pass", "rescued", "regressed", "both_fail"]
+
+    for cat in cat_order:
+        values = np.array(
+            [diff_cats[d].get(cat, 0) for d in diffs_sorted],
+            dtype=float,
+        )
+        if values.sum() > 0:
+            ax2.bar(
+                x,
+                values,
+                bottom=bottom,
+                label=cat,
+                color=color_map[cat],
+                alpha=0.85,
+            )
+            for i, v in enumerate(values):
+                if v > 0:
+                    ax2.text(
+                        x[i],
+                        bottom[i] + v / 2,
+                        f"{int(v)}",
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                    )
+            bottom += values
+
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(diffs_sorted)
+    ax2.set_ylabel("Count")
+    ax2.set_title("By Difficulty")
+    ax2.legend(fontsize=8)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_path}")

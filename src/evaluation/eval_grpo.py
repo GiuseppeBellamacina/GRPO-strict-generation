@@ -32,11 +32,16 @@ from src.datasets.dataloader import (
 from src.evaluation.eval_baseline import generate_completions
 from src.models.model_loader import load_model_and_tokenizer
 from src.utils.config import load_config
-from src.utils.metrics import compute_detailed_metrics
+from src.utils.metrics import check_syntax, compute_detailed_metrics
 from src.utils.visualization import (
     plot_baseline_vs_grpo_comparison,
+    plot_completion_length_distribution,
+    plot_completions_error_breakdown,
     plot_curriculum_progression,
+    plot_error_evolution,
     plot_per_category_breakdown,
+    plot_rescued_vs_regressed,
+    plot_stage_difficulty_heatmap,
 )
 
 load_dotenv()
@@ -50,7 +55,7 @@ def _evaluate_model(
     difficulties: list[str],
     gen_config: dict[str, Any],
     is_checkpoint: bool = False,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], list[str]]:
     """Load a model from path, generate completions, compute metrics.
 
     Args:
@@ -115,7 +120,19 @@ def _evaluate_model(
     gc.collect()
     torch.cuda.empty_cache()
 
-    return metrics
+    return metrics, first_completions
+
+
+def _safe_filename(label: str) -> str:
+    """Turn a human-readable label into a filesystem-safe name."""
+    return (
+        label.lower()
+        .replace(" ", "_")
+        .replace(":", "")
+        .replace("(", "")
+        .replace(")", "")
+        .strip("_")
+    )
 
 
 def main() -> None:
@@ -358,13 +375,14 @@ def main() -> None:
     torch.cuda.empty_cache()
 
     all_eval_results: list[dict] = []
+    all_completions_data: dict[str, list[dict]] = {}
 
     for label, model_path, is_ckpt in eval_targets:
         print(f"\n{'='*50}")
         print(f"Evaluating: {label}")
         print(f"{'='*50}")
 
-        metrics = _evaluate_model(
+        metrics, completions = _evaluate_model(
             config,
             model_path,
             test_ds,
@@ -387,7 +405,7 @@ def main() -> None:
         )
 
         # Save individual results
-        safe_name = Path(model_path).name
+        safe_name = _safe_filename(label)
         result_json = {
             "checkpoint": model_path,
             "label": label,
@@ -400,7 +418,30 @@ def main() -> None:
         )
         print(f"Results saved to {results_path}")
 
-        # Per-model figure
+        # Save completions with validation results
+        completions_data = []
+        for p, d, c in zip(prompts, difficulties, completions):
+            valid, error = check_syntax(c)
+            entry = {
+                "prompt": p,
+                "difficulty": d,
+                "completion": c,
+                "valid": valid,
+            }
+            if not valid:
+                entry["error"] = error
+            completions_data.append(entry)
+        compl_path = eval_output / f"completions_{safe_name}.json"
+        compl_path.write_text(
+            json.dumps(
+                completions_data, indent=2, ensure_ascii=False
+            ),
+            encoding="utf-8",
+        )
+        print(f"Completions saved to {compl_path}")
+        all_completions_data[label] = completions_data
+
+        # Per-model figures
         fig_path = str(figures_dir / f"pass_rates_{safe_name}.png")
         plot_per_category_breakdown(
             metrics,
@@ -409,6 +450,26 @@ def main() -> None:
         )
         wandb.log(
             {f"eval/{safe_name}_pass_rates": wandb.Image(fig_path)}
+        )
+
+        err_fig_path = str(figures_dir / f"errors_{safe_name}.png")
+        plot_completions_error_breakdown(
+            completions_data,
+            title=f"Error Breakdown — {label}",
+            output_path=err_fig_path,
+        )
+        wandb.log(
+            {f"eval/{safe_name}_errors": wandb.Image(err_fig_path)}
+        )
+
+        len_fig_path = str(figures_dir / f"lengths_{safe_name}.png")
+        plot_completion_length_distribution(
+            completions_data,
+            title=f"Completion Lengths — {label}",
+            output_path=len_fig_path,
+        )
+        wandb.log(
+            {f"eval/{safe_name}_lengths": wandb.Image(len_fig_path)}
         )
 
     # Use the last evaluated model as "grpo_metrics" for backward compat
@@ -432,7 +493,7 @@ def main() -> None:
             print(f"\n{'='*50}")
             print("Running baseline evaluation...")
             print(f"{'='*50}")
-            baseline_metrics = _evaluate_model(
+            baseline_metrics, baseline_completions = _evaluate_model(
                 config,
                 config["model"]["name"],
                 test_ds,
@@ -451,6 +512,31 @@ def main() -> None:
                 encoding="utf-8",
             )
             print(f"Baseline results saved to {bl_path}")
+
+            # Save baseline completions with validation results
+            bl_compl_data = []
+            for p, d, c in zip(
+                prompts, difficulties, baseline_completions
+            ):
+                valid, error = check_syntax(c)
+                entry = {
+                    "prompt": p,
+                    "difficulty": d,
+                    "completion": c,
+                    "valid": valid,
+                }
+                if not valid:
+                    entry["error"] = error
+                bl_compl_data.append(entry)
+            bl_compl_path = eval_output / "completions_baseline.json"
+            bl_compl_path.write_text(
+                json.dumps(
+                    bl_compl_data, indent=2, ensure_ascii=False
+                ),
+                encoding="utf-8",
+            )
+            print(f"Baseline completions saved to {bl_compl_path}")
+            all_completions_data["Baseline"] = bl_compl_data
 
     if baseline_metrics:
         model_name = config["model"]["name"].split("/")[-1]
@@ -519,9 +605,9 @@ def main() -> None:
 
             # Individual baseline-vs-stage comparison charts
             for r in all_eval_results:
-                safe_name = Path(r["path"]).name
+                stage_safe = _safe_filename(r["label"])
                 stage_comp_path = str(
-                    figures_dir / f"baseline_vs_{safe_name}.png"
+                    figures_dir / f"baseline_vs_{stage_safe}.png"
                 )
                 plot_baseline_vs_grpo_comparison(
                     baseline_metrics=baseline_metrics,
@@ -531,7 +617,7 @@ def main() -> None:
                 )
                 wandb.log(
                     {
-                        f"eval/baseline_vs_{safe_name}": wandb.Image(
+                        f"eval/baseline_vs_{stage_safe}": wandb.Image(
                             stage_comp_path
                         )
                     }
@@ -554,6 +640,51 @@ def main() -> None:
                 }
             )
 
+            # Error evolution across stages
+            stage_completions_list: list[tuple[str, list[dict]]] = []
+            if "Baseline" in all_completions_data:
+                stage_completions_list.append(
+                    ("Baseline", all_completions_data["Baseline"])
+                )
+            for r in all_eval_results:
+                if r["label"] in all_completions_data:
+                    stage_completions_list.append(
+                        (r["label"], all_completions_data[r["label"]])
+                    )
+            if len(stage_completions_list) >= 2:
+                evo_fig_path = str(
+                    figures_dir / "error_evolution.png"
+                )
+                plot_error_evolution(
+                    stage_completions_list,
+                    model_name=model_name,
+                    output_path=evo_fig_path,
+                )
+                wandb.log(
+                    {
+                        "eval/error_evolution": wandb.Image(
+                            evo_fig_path
+                        )
+                    }
+                )
+
+                # Stage × Difficulty heatmap
+                heatmap_path = str(
+                    figures_dir / "stage_difficulty_heatmap.png"
+                )
+                plot_stage_difficulty_heatmap(
+                    stage_completions_list,
+                    model_name=model_name,
+                    output_path=heatmap_path,
+                )
+                wandb.log(
+                    {
+                        "eval/stage_difficulty_heatmap": wandb.Image(
+                            heatmap_path
+                        )
+                    }
+                )
+
             # Extend comparison JSON with per-stage data
             comparison["curriculum_stages"] = [
                 {
@@ -569,6 +700,23 @@ def main() -> None:
             json.dumps(comparison, indent=2), encoding="utf-8"
         )
         print(f"Comparison saved to {comp_path}")
+
+        # Rescued vs Regressed analysis (baseline vs final GRPO)
+        final_label = all_eval_results[-1]["label"]
+        if (
+            "Baseline" in all_completions_data
+            and final_label in all_completions_data
+        ):
+            rr_path = str(figures_dir / "rescued_vs_regressed.png")
+            plot_rescued_vs_regressed(
+                all_completions_data["Baseline"],
+                all_completions_data[final_label],
+                model_name=model_name,
+                output_path=rr_path,
+            )
+            wandb.log(
+                {"eval/rescued_vs_regressed": wandb.Image(rr_path)}
+            )
 
     wandb.finish()
     print("\nEvaluation complete!")

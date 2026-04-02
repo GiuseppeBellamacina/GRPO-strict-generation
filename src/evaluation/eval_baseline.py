@@ -15,7 +15,6 @@ from typing import Any
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
 import torch  # noqa: E402
 import wandb  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
@@ -246,28 +245,18 @@ def main() -> None:
     )
     print(f"Completions saved to {completions_path}")
 
-    # Log to wandb — solo la figura verticale, niente scalari sparsi
-    categories = list(detailed["per_category"].keys())
-    cat_rates = [
-        detailed["per_category"][c]["pass_rate"] for c in categories
-    ]
-    fig, ax = plt.subplots(figsize=(max(6, len(categories) * 1.2), 4))
-    ax.bar(categories, cat_rates, color="#2196F3")
-    ax.set_ylabel("Pass@1")
-    ax.set_title(
-        f"Baseline Evaluation – {model_cfg['name'].split('/')[-1]}"
-    )
-    ax.set_ylim(0, 1)
-    for i, v in enumerate(cat_rates):
-        ax.text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=9)
-    fig.tight_layout()
+    # Log to wandb
     figures_dir = output_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    fig_path = figures_dir / "baseline_eval_pass_rates.png"
-    fig.savefig(fig_path, dpi=150)
-    wandb.log({"eval/pass_rates": wandb.Image(fig)})
-    plt.close(fig)
-    print(f"Figure saved to {fig_path}")
+    fig_path = str(figures_dir / "baseline_eval_pass_rates.png")
+    from src.utils.visualization import plot_per_category_breakdown
+
+    plot_per_category_breakdown(
+        detailed,
+        title=f"Baseline Evaluation \u2014 {model_cfg['name'].split('/')[-1]}",
+        output_path=fig_path,
+    )
+    wandb.log({"eval/pass_rates": wandb.Image(fig_path)})
 
     wandb.finish()
 

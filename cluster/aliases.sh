@@ -157,7 +157,7 @@ trainlog-live() {
         echo "Log non trovato: $logfile"
         return 1
     fi
-    tail -f "$logfile" | python3 -m src.utils.live_training_table
+    tail -f "$logfile" | (cd "$PROJ_DIR" && python3 -m src.utils.live_training_table)
 }
 
 # Lancia training (uso: train --config PATH [extra args...])
