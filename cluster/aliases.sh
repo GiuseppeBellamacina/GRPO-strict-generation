@@ -33,13 +33,13 @@ alias killalljobs='scancel --me'
 
 # ── Log monitoring ───────────────────────────────────────────────────────────
 
-# Segui il log di un job di training GRPO (uso: grpolog <JOB_ID>)
-grpolog() {
+# Segui il log di un job di training (uso: trainlog <JOB_ID>)
+trainlog() {
     if [ -z "$1" ]; then
-        echo "Uso: grpolog <JOB_ID>"
+        echo "Uso: trainlog <JOB_ID>"
         return 1
     fi
-    local logfile="$PROJ_DIR/logs/slurm-grpo-${1}.log"
+    local logfile="$PROJ_DIR/logs/slurm-train-${1}.log"
     if [ ! -f "$logfile" ]; then
         echo "Log non trovato: $logfile"
         return 1
@@ -131,18 +131,41 @@ ckpts() {
     done || echo "  (nessuno)"
 }
 
-# Lancia training
-alias train='cd "$PROJ_DIR" && sbatch cluster/train.sh'
+# Lancia training (uso: train [--mode grpo|sft] [extra args...])
+train() {
+    local mode="grpo"
+    local extra_args=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            *) extra_args="$extra_args $1"; shift ;;
+        esac
+    done
+    cd "$PROJ_DIR" && MODE="$mode" EXTRA_ARGS="$extra_args" sbatch cluster/train.sh
+}
 
-# Lancia eval
-alias eval-grpo='cd "$PROJ_DIR" && sbatch cluster/eval_grpo.sh'
-alias eval-curriculum='cd "$PROJ_DIR" && CURRICULUM=1 sbatch cluster/eval_grpo.sh'
-alias eval-baseline='cd "$PROJ_DIR" && sbatch cluster/eval_baseline.sh'
+# Lancia eval (uso: eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH])
+eval() {
+    local mode="grpo"
+    local compare=0
+    local curriculum=0
+    local checkpoint=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --mode) mode="$2"; shift 2 ;;
+            --compare) compare=1; shift ;;
+            --curriculum) curriculum=1; shift ;;
+            --checkpoint) checkpoint="$2"; shift 2 ;;
+            *) echo "Argomento sconosciuto: $1"; return 1 ;;
+        esac
+    done
+    cd "$PROJ_DIR" && MODE="$mode" COMPARE="$compare" CURRICULUM="$curriculum" CHECKPOINT="$checkpoint" sbatch cluster/eval_grpo.sh
+}
 
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs grpolog evallog baselog lastlog tree ltree gpu quota proj ckpts train eval-grpo eval-curriculum eval-baseline claudio unload-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts train eval claudio unload-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -151,8 +174,8 @@ claudio() {
     echo "   jobinfo <ID>      — dettagli job"
     echo "   killjob <ID>      — cancella job"
     echo "   killalljobs       — cancella tutti i miei job"
-    echo "   grpolog <ID>      — segui log training GRPO"
-    echo "   evallog <ID>      — segui log eval GRPO"
+    echo "   trainlog <ID>     — segui log training"
+    echo "   evallog <ID>      — segui log eval"
     echo "   baselog <ID>      — segui log baseline"
     echo "   lastlog           — segui l'ultimo log"
     echo "   tree <DIR> [N]    — albero cartelle (profondità N)"
@@ -161,11 +184,13 @@ claudio() {
     echo "   quota             — uso disco progetto"
     echo "   proj              — cd al progetto"
     echo "   ckpts             — mostra checkpoint"
-    echo "   train             — sbatch training"
-    echo "   eval-grpo         — sbatch eval GRPO"
-    echo "   eval-curriculum   — sbatch eval curriculum"
-    echo "   eval-baseline     — sbatch eval baseline"
-    echo "   claudio             — mostra questo messaggio"
+    echo ""
+    echo "   train [--mode grpo|sft] [extra args...]"
+    echo "                     — lancia training (default: grpo)"
+    echo "   eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH]"
+    echo "                     — lancia evaluation (default: grpo)"
+    echo ""
+    echo "   claudio           — mostra questo messaggio"
     echo "   unload-aliases    — rimuovi tutti i comandi custom"
 }
 

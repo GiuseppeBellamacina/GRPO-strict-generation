@@ -1,9 +1,11 @@
 #!/bin/bash
 # ============================================================================
-# SLURM batch script — GRPO Training sul cluster DMI
+# SLURM batch script — Training sul cluster DMI
 #
 # Uso:
-#   sbatch cluster/train.sh
+#   sbatch cluster/train.sh                     # default: GRPO
+#   MODE=sft sbatch cluster/train.sh            # SFT training
+#   MODE=grpo EXTRA_ARGS="--resume" sbatch cluster/train.sh
 #
 # Per il primo avvio eseguire prima:  bash cluster/setup.sh
 # (dentro una sessione interattiva Apptainer)
@@ -12,7 +14,7 @@
 # ┌────────────────────────────────────────────────────────┐
 # │  CONFIGURA QUI — modifica account/partition/qos/email  │
 # └────────────────────────────────────────────────────────┘
-#SBATCH --job-name=grpo-train
+#SBATCH --job-name=train
 #SBATCH --account=dl-course-q2
 #SBATCH --partition=dl-course-q2
 #SBATCH --qos=gpu-xlarge
@@ -21,21 +23,33 @@
 #SBATCH --gres=gpu:1 --gres=shard:22528
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=bellamacina50@gmail.com
-#SBATCH --output=logs/slurm-grpo-%j.log
+#SBATCH --output=logs/slurm-train-%j.log
 
 # ── Variabili progetto ────────────────────────────────────────────────────────
-CONFIG="experiments/configs/grpo_cluster.yaml"
-EXTRA_ARGS=""   # "--resume" per riprendere da checkpoint, "--eval-only DIR" per solo eval
+MODE="${MODE:-grpo}"        # "grpo" o "sft"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
+
+# Seleziona config in base alla mode
+case "$MODE" in
+    grpo) CONFIG="experiments/configs/grpo_cluster.yaml" ;;
+    sft)  CONFIG="experiments/configs/sft.yaml" ;;
+    *)
+        echo "❌ MODE non valida: $MODE (usa: grpo, sft)"
+        exit 1
+        ;;
+esac
 
 # ── Setup ambiente ───────────────────────────────────────────────────────────
 set -e
 
 echo "============================================"
-echo "  GRPO Training — Cluster DMI"
+echo "  Training — Cluster DMI"
 echo "  Job ID:    ${SLURM_JOB_ID}"
 echo "  Node:      $(hostname)"
 echo "  Date:      $(date)"
+echo "  Mode:      ${MODE}"
 echo "  Config:    ${CONFIG}"
+echo "  Extra:     ${EXTRA_ARGS}"
 echo "============================================"
 
 # Crea directory logs se non esiste
