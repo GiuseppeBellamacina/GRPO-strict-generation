@@ -144,8 +144,8 @@ train() {
     cd "$PROJ_DIR" && MODE="$mode" EXTRA_ARGS="$extra_args" sbatch cluster/train.sh
 }
 
-# Lancia eval (uso: eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH])
-eval() {
+# Lancia eval (uso: run-eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH])
+run-eval() {
     local mode="grpo"
     local compare=0
     local curriculum=0
@@ -165,7 +165,7 @@ eval() {
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts train eval claudio unload-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts train run-eval claudio unload-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -187,7 +187,7 @@ claudio() {
     echo ""
     echo "   train [--mode grpo|sft] [extra args...]"
     echo "                     — lancia training (default: grpo)"
-    echo "   eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH]"
+    echo "   run-eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH]"
     echo "                     — lancia evaluation (default: grpo)"
     echo ""
     echo "   claudio           — mostra questo messaggio"

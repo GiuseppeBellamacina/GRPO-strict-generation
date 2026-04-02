@@ -14,6 +14,7 @@ You can override with ``--mode grpo`` or ``--mode baseline``.
 """
 
 import argparse
+import sys
 
 import yaml
 
@@ -40,7 +41,11 @@ _parser.add_argument("--config", type=str, default=None)
 _parser.add_argument(
     "--mode", type=str, default=None, choices=["baseline", "grpo"]
 )
-_early_args, _ = _parser.parse_known_args()
+_early_args, _remaining = _parser.parse_known_args()
+
+# Remove --mode from sys.argv so downstream parsers don't choke on it
+if _early_args.mode is not None:
+    sys.argv = [sys.argv[0]] + _remaining
 
 _cfg = _peek_config(_early_args.config) if _early_args.config else {}
 
