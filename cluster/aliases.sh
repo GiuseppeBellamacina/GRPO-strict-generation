@@ -117,18 +117,27 @@ alias proj='cd "$PROJ_DIR"'
 
 # Mostra i checkpoint disponibili
 ckpts() {
-    echo "=== Checkpoint intermedi (per stage) ==="
-    for d in "$PROJ_DIR"/experiments/checkpoints/grpo/stage_*/; do
-        if [ -d "$d" ]; then
-            echo "  $(basename "$d"):"
-            ls -d "$d"checkpoint-* 2>/dev/null | while read -r c; do echo "    $(basename "$c")"; done
+    local base="$PROJ_DIR/experiments/checkpoints/grpo"
+    for model_dir in "$base"/*/; do
+        [ -d "$model_dir" ] || continue
+        local model=$(basename "$model_dir")
+        echo "=== $model ==="
+        # Checkpoint intermedi (per stage)
+        for d in "$model_dir"stage_*/; do
+            if [ -d "$d" ]; then
+                echo "  $(basename "$d"):"
+                ls -d "$d"checkpoint-* 2>/dev/null | while read -r c; do echo "    $(basename "$c")"; done
+            fi
+        done
+        # Modelli finali (stages/)
+        if [ -d "$model_dir/stages" ]; then
+            echo "  stages/:"
+            ls -d "$model_dir"stages/stage_*/ 2>/dev/null | while read -r s; do
+                echo "    $(basename "$s")"
+            done
         fi
+        echo ""
     done
-    echo ""
-    echo "=== Modelli finali (stages/) ==="
-    ls -d "$PROJ_DIR"/experiments/checkpoints/grpo/stages/stage_*/ 2>/dev/null | while read -r s; do
-        echo "  $(basename "$s")"
-    done || echo "  (nessuno)"
 }
 
 # Mostra tabella training log (uso: trainlog-table [PATH] [--tail N])
@@ -151,41 +160,61 @@ trainlog-live() {
     tail -f "$logfile" | python3 -m src.utils.live_training_table
 }
 
-# Lancia training (uso: train [--mode grpo|sft] [extra args...])
+# Lancia training (uso: train --config PATH [extra args...])
 train() {
-    local mode="grpo"
+    local config=""
     local extra_args=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --mode) mode="$2"; shift 2 ;;
+            --config) config="$2"; shift 2 ;;
             *) extra_args="$extra_args $1"; shift ;;
         esac
     done
-    cd "$PROJ_DIR" && MODE="$mode" EXTRA_ARGS="$extra_args" sbatch cluster/train.sh
+    if [ -z "$config" ]; then
+        echo "Uso: train --config PATH [extra args...]"
+        echo ""
+        echo "Config disponibili:"
+        ls -1 "$PROJ_DIR"/experiments/configs/grpo_*.yaml 2>/dev/null | xargs -I{} basename {} | sed 's/^/  /'
+        return 1
+    fi
+    cd "$PROJ_DIR" && CONFIG="$config" EXTRA_ARGS="$extra_args" sbatch cluster/train.sh
 }
 
-# Lancia eval (uso: run-eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH])
+# Lancia eval (uso: run-eval --config PATH [--compare] [--curriculum] [--checkpoint PATH])
 run-eval() {
-    local mode="grpo"
+    local config=""
     local compare=0
     local curriculum=0
     local checkpoint=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --mode) mode="$2"; shift 2 ;;
+            --config) config="$2"; shift 2 ;;
             --compare) compare=1; shift ;;
             --curriculum) curriculum=1; shift ;;
             --checkpoint) checkpoint="$2"; shift 2 ;;
             *) echo "Argomento sconosciuto: $1"; return 1 ;;
         esac
     done
-    cd "$PROJ_DIR" && MODE="$mode" COMPARE="$compare" CURRICULUM="$curriculum" CHECKPOINT="$checkpoint" sbatch cluster/eval.sh
+    if [ -z "$config" ]; then
+        echo "Uso: run-eval --config PATH [--compare] [--curriculum] [--checkpoint PATH]"
+        echo ""
+        echo "Config disponibili:"
+        ls -1 "$PROJ_DIR"/experiments/configs/grpo_*.yaml "$PROJ_DIR"/experiments/configs/baseline.yaml 2>/dev/null | xargs -I{} basename {} | sed 's/^/  /'
+        return 1
+    fi
+    cd "$PROJ_DIR" && CONFIG="$config" COMPARE="$compare" CURRICULUM="$curriculum" CHECKPOINT="$checkpoint" sbatch cluster/eval.sh
+}
+
+# Lancia tutti i modelli (train + eval curriculum)
+# Uso: run-all [--eval-only] [--train-only]
+run-all() {
+    cd "$PROJ_DIR" && bash cluster/run_all.sh "$@"
 }
 
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-live train run-eval claudio unload-aliases install-aliases uninstall-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-live train run-eval run-all claudio unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -208,10 +237,12 @@ claudio() {
     echo "                     — tabella metriche training"
     echo "   trainlog-live <ID> — training live come tabella"
     echo ""
-    echo "   train [--mode grpo|sft] [extra args...]"
-    echo "                     — lancia training (default: grpo)"
-    echo "   run-eval [--mode grpo|sft|baseline] [--compare] [--curriculum] [--checkpoint PATH]"
-    echo "                     — lancia evaluation (default: grpo)"
+    echo "   train --config PATH [extra args...]"
+    echo "                     — lancia training"
+    echo "   run-eval --config PATH [--compare] [--curriculum] [--checkpoint PATH]"
+    echo "                     — lancia evaluation"
+    echo "   run-all [--eval-only] [--train-only]"
+    echo "                     — lancia train+eval per tutti i modelli"
     echo ""
     echo "   claudio           — mostra questo messaggio"
     echo "   unload-aliases    — rimuovi alias (sessione corrente)"

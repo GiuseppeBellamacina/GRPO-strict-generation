@@ -3,9 +3,8 @@
 # SLURM batch script — Training sul cluster DMI
 #
 # Uso:
-#   sbatch cluster/train.sh                     # default: GRPO
-#   MODE=sft sbatch cluster/train.sh            # SFT training
-#   MODE=grpo EXTRA_ARGS="--resume" sbatch cluster/train.sh
+#   CONFIG=experiments/configs/grpo_smollm2_360m.yaml sbatch cluster/train.sh
+#   CONFIG=experiments/configs/grpo_qwen05.yaml EXTRA_ARGS="--resume" sbatch cluster/train.sh
 #
 # Per il primo avvio eseguire prima:  bash cluster/setup.sh
 # (dentro una sessione interattiva Apptainer)
@@ -26,18 +25,16 @@
 #SBATCH --output=logs/slurm-train-%j.log
 
 # ── Variabili progetto ────────────────────────────────────────────────────────
-MODE="${MODE:-grpo}"        # "grpo" o "sft"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 
-# Seleziona config in base alla mode
-case "$MODE" in
-    grpo) CONFIG="experiments/configs/grpo_cluster.yaml" ;;
-    sft)  CONFIG="experiments/configs/sft.yaml" ;;
-    *)
-        echo "❌ MODE non valida: $MODE (usa: grpo, sft)"
-        exit 1
-        ;;
-esac
+if [ -z "$CONFIG" ]; then
+    echo "❌ CONFIG non impostato. Uso:"
+    echo "  CONFIG=experiments/configs/grpo_smollm2_360m.yaml sbatch cluster/train.sh"
+    echo ""
+    echo "Config disponibili:"
+    ls -1 experiments/configs/grpo_*.yaml 2>/dev/null | sed 's/^/  /'
+    exit 1
+fi
 
 # ── Setup ambiente ───────────────────────────────────────────────────────────
 set -e
@@ -47,7 +44,6 @@ echo "  Training — Cluster DMI"
 echo "  Job ID:    ${SLURM_JOB_ID}"
 echo "  Node:      $(hostname)"
 echo "  Date:      $(date)"
-echo "  Mode:      ${MODE}"
 echo "  Config:    ${CONFIG}"
 echo "  Extra:     ${EXTRA_ARGS}"
 echo "============================================"

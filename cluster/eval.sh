@@ -3,13 +3,13 @@
 # SLURM batch script — Evaluation sul cluster DMI
 #
 # Uso:
-#   sbatch cluster/eval.sh                                    # eval GRPO (default)
-#   MODE=baseline sbatch cluster/eval.sh                      # eval baseline
-#   MODE=sft sbatch cluster/eval.sh                           # eval SFT
-#   COMPARE=1 sbatch cluster/eval.sh                          # eval GRPO + comparison
-#   CURRICULUM=1 sbatch cluster/eval.sh                       # eval curriculum (implica compare)
-#   CHECKPOINT="path/to/ckpt" sbatch cluster/eval.sh          # eval specifico checkpoint
+#   CONFIG=experiments/configs/grpo_smollm2_360m.yaml sbatch cluster/eval.sh
+#   CONFIG=experiments/configs/grpo_smollm2_360m.yaml CURRICULUM=1 sbatch cluster/eval.sh
+#   CONFIG=experiments/configs/grpo_qwen05.yaml COMPARE=1 sbatch cluster/eval.sh
+#   CONFIG=experiments/configs/baseline.yaml sbatch cluster/eval.sh
+#   CHECKPOINT="path/to/ckpt" CONFIG=... sbatch cluster/eval.sh
 #
+# Il tipo di eval (grpo/baseline) viene auto-rilevato dal config.
 # Se baseline results.json non esiste e COMPARE=1, lo script
 # esegue anche la baseline evaluation automaticamente.
 # ============================================================================
@@ -29,7 +29,6 @@
 #SBATCH --output=logs/slurm-eval-%j.log
 
 # ── Variabili progetto ────────────────────────────────────────────────────────
-MODE="${MODE:-grpo}"          # "grpo", "sft", "baseline"
 CHECKPOINT="${CHECKPOINT:-}"  # vuoto = auto-detect, oppure path esplicito
 COMPARE="${COMPARE:-0}"       # 0 = solo eval, 1 = anche comparison con baseline
 CURRICULUM="${CURRICULUM:-0}" # 0 = singolo checkpoint, 1 = eval tutti gli stage (implica COMPARE=1)
@@ -39,25 +38,14 @@ if [ "$CURRICULUM" = "1" ]; then
     COMPARE="1"
 fi
 
-# Seleziona config e eval mode in base alla mode
-case "$MODE" in
-    grpo)
-        CONFIG="experiments/configs/grpo_cluster.yaml"
-        EVAL_MODE="grpo"
-        ;;
-    sft)
-        CONFIG="experiments/configs/sft.yaml"
-        EVAL_MODE="grpo"  # stessa logica di eval (PEFT checkpoint)
-        ;;
-    baseline)
-        CONFIG="experiments/configs/baseline.yaml"
-        EVAL_MODE="baseline"
-        ;;
-    *)
-        echo "❌ MODE non valida: $MODE (usa: grpo, sft, baseline)"
-        exit 1
-        ;;
-esac
+if [ -z "$CONFIG" ]; then
+    echo "❌ CONFIG non impostato. Uso:"
+    echo "  CONFIG=experiments/configs/grpo_smollm2_360m.yaml sbatch cluster/eval.sh"
+    echo ""
+    echo "Config disponibili:"
+    ls -1 experiments/configs/grpo_*.yaml experiments/configs/baseline.yaml 2>/dev/null | sed 's/^/  /'
+    exit 1
+fi
 
 # ── Setup ambiente ───────────────────────────────────────────────────────────
 set -e
@@ -67,7 +55,6 @@ echo "  Evaluation — Cluster DMI"
 echo "  Job ID:    ${SLURM_JOB_ID}"
 echo "  Node:      $(hostname)"
 echo "  Date:      $(date)"
-echo "  Mode:      ${MODE}"
 echo "  Config:    ${CONFIG}"
 echo "  Compare:   ${COMPARE}"
 echo "  Curriculum: ${CURRICULUM}"
@@ -85,15 +72,16 @@ if [ ! -d "data/synthetic" ]; then
         python -m src.datasets.synthetic_dataset --config "${CONFIG}"
 fi
 
-# Costruisci argomenti
-EVAL_ARGS="--config ${CONFIG} --mode ${EVAL_MODE}"
+# Costruisci argomenti — il tipo di eval (grpo/baseline) viene auto-rilevato
+# dal __main__.py in base al contenuto del config YAML.
+EVAL_ARGS="--config ${CONFIG}"
 if [ -n "$CHECKPOINT" ]; then
     EVAL_ARGS="${EVAL_ARGS} --checkpoint ${CHECKPOINT}"
 fi
-if [ "$COMPARE" = "1" ] && [ "$MODE" != "baseline" ]; then
+if [ "$COMPARE" = "1" ]; then
     EVAL_ARGS="${EVAL_ARGS} --compare"
 fi
-if [ "$CURRICULUM" = "1" ] && [ "$MODE" != "baseline" ]; then
+if [ "$CURRICULUM" = "1" ]; then
     EVAL_ARGS="${EVAL_ARGS} --curriculum"
 fi
 

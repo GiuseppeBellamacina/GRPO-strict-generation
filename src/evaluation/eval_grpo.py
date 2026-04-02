@@ -2,13 +2,13 @@
 
 Usage:
     # Evaluate GRPO model only
-    python -m src.evaluation --config experiments/configs/grpo_cluster.yaml
+    python -m src.evaluation --config experiments/configs/grpo_smollm2_360m.yaml
 
     # Evaluate GRPO model + compare with baseline results
-    python -m src.evaluation --config experiments/configs/grpo_cluster.yaml --compare
+    python -m src.evaluation --config experiments/configs/grpo_smollm2_360m.yaml --compare
 
     # Evaluate a specific checkpoint
-    python -m src.evaluation --config experiments/configs/grpo_cluster.yaml \
+    python -m src.evaluation --config experiments/configs/grpo_smollm2_360m.yaml \
         --checkpoint experiments/checkpoints/grpo/checkpoint-480
 """
 
@@ -148,18 +148,27 @@ def main() -> None:
     parser.add_argument(
         "--baseline-results",
         type=str,
-        default="experiments/logs/baseline/results.json",
-        help="Path to existing baseline results.json (skip re-running baseline)",
+        default=None,
+        help="Path to existing baseline results.json (default: <log_dir>/baseline_results.json)",
     )
     parser.add_argument(
         "--max-samples",
         type=int,
-        default=200,
-        help="Max test samples to evaluate (default: 200)",
+        default=300,
+        help="Max test samples to evaluate (default: 300)",
     )
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    # Derive baseline results path from config log_dir if not explicitly set
+    if args.baseline_results is None:
+        log_dir = config["training"].get(
+            "log_dir", "experiments/logs/grpo"
+        )
+        args.baseline_results = str(
+            Path(log_dir) / "baseline_results.json"
+        )
 
     # Detect curriculum from config (curriculum.enabled in YAML)
     curriculum_cfg = config.get("curriculum", {})
@@ -431,14 +440,12 @@ def main() -> None:
                 difficulties,
                 gen_config,
             )
-            # Save baseline results
-            bl_output = Path("experiments/logs/baseline")
-            bl_output.mkdir(parents=True, exist_ok=True)
+            # Save baseline results next to eval results
             bl_results = {
                 "model": config["model"]["name"],
                 "detailed_metrics": baseline_metrics,
             }
-            bl_path = bl_output / "results.json"
+            bl_path = Path(args.baseline_results)
             bl_path.write_text(
                 json.dumps(bl_results, indent=2, default=str),
                 encoding="utf-8",
