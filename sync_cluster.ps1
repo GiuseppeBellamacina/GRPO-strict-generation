@@ -23,7 +23,7 @@ function Upload {
 
     # Ensure remote directory structure exists
     Write-Progress -Activity "Upload" -Status "Creating remote directories..." -PercentComplete 2
-    ssh $SSH_TARGET "mkdir -p ~/GRPO-strict-generation/experiments/{configs,logs,checkpoints} ~/GRPO-strict-generation/notebooks"
+    ssh $SSH_TARGET "mkdir -p ~/GRPO-strict-generation/experiments/{configs,logs,checkpoints}"
 
     # Collect all individual files to upload (flatten directories)
     # NOTE: "data" is excluded — the dataset is generated on the cluster by setup.sh/train.sh
