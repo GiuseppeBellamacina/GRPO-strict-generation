@@ -216,10 +216,43 @@ run-all() {
     cd "$PROJ_DIR" && bash cluster/run_all.sh "$@"
 }
 
+# Controlla se il watcher è attivo
+watcher-status() {
+    if [ -f "$PROJ_DIR/.chain_pid" ]; then
+        local pid=$(cat "$PROJ_DIR/.chain_pid")
+        if ps -p "$pid" > /dev/null 2>&1; then
+            local remaining=0
+            [ -f "$PROJ_DIR/.job_chain" ] && remaining=$(wc -l < "$PROJ_DIR/.job_chain")
+            echo "✅ Watcher attivo (PID $pid) — $remaining job rimanenti"
+            [ -f "$PROJ_DIR/.job_chain" ] && echo "Prossimi:" && cat -n "$PROJ_DIR/.job_chain"
+        else
+            echo "❌ Watcher morto (PID $pid non trovato)"
+            rm -f "$PROJ_DIR/.chain_pid"
+        fi
+    else
+        echo "❌ Nessun watcher attivo (.chain_pid non trovato)"
+    fi
+}
+
+# Uccidi il watcher
+watcher-kill() {
+    if [ -f "$PROJ_DIR/.chain_pid" ]; then
+        local pid=$(cat "$PROJ_DIR/.chain_pid")
+        if kill "$pid" 2>/dev/null; then
+            echo "✅ Watcher (PID $pid) terminato"
+        else
+            echo "⚠️  Watcher (PID $pid) già morto"
+        fi
+        rm -f "$PROJ_DIR/.chain_pid"
+    else
+        echo "Nessun watcher attivo"
+    fi
+}
+
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all claudio unload-aliases install-aliases uninstall-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill claudio unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -250,6 +283,8 @@ claudio() {
     echo "                     — lancia evaluation"
     echo "   run-all [--eval-only] [--train-only]"
     echo "                     — lancia train+eval per tutti i modelli"
+    echo "   watcher-status    — controlla se il watcher è attivo"
+    echo "   watcher-kill      — uccidi il watcher"
     echo ""
     echo "   claudio           — mostra questo messaggio"
     echo "   unload-aliases    — rimuovi alias (sessione corrente)"
