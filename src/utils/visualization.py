@@ -299,3 +299,115 @@ def plot_baseline_vs_grpo_comparison(
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_path}")
+
+
+def plot_curriculum_progression(
+    stage_results: list[dict],
+    model_name: str = "",
+    output_path: str = "experiments/logs/figures/curriculum_progression.png",
+) -> None:
+    """Multi-stage curriculum comparison: baseline + each stage side by side.
+
+    Args:
+        stage_results: List of dicts, each with keys:
+            - ``"label"``: display name (e.g. "Baseline", "Stage 1: format_basics")
+            - ``"metrics"``: output of ``compute_detailed_metrics``
+        model_name: Short model name for the figure title.
+        output_path: Where to save the figure.
+    """
+    if len(stage_results) < 2:
+        print("Need at least 2 results (baseline + 1 stage) to plot.")
+        return
+
+    sns.set_theme(style="whitegrid")
+
+    # Collect categories from all results
+    all_cats: set[str] = set()
+    for r in stage_results:
+        all_cats.update(r["metrics"].get("per_category", {}).keys())
+    all_cats_sorted = sorted(all_cats)
+    labels = ["overall"] + all_cats_sorted
+
+    n_stages = len(stage_results)
+    x = np.arange(len(labels))
+    width = 0.75 / n_stages
+
+    palette = sns.color_palette("husl", n_stages)
+
+    # ── Figure with 2 subplots: absolute pass rates + deltas vs baseline ──
+    fig, axes = plt.subplots(
+        1, 2, figsize=(max(14, 4 + n_stages * 2), 6)
+    )
+    suptitle = "Curriculum Progression"
+    if model_name:
+        suptitle += f" — {model_name}"
+    fig.suptitle(suptitle, fontsize=14, fontweight="bold")
+
+    # Left: grouped bar of pass rates
+    ax = axes[0]
+    all_bars = []
+    for i, r in enumerate(stage_results):
+        m = r["metrics"]
+        values = [m["overall_pass_rate"]] + [
+            m["per_category"].get(c, {}).get("pass_rate", 0.0)
+            for c in all_cats_sorted
+        ]
+        offset = (i - n_stages / 2 + 0.5) * width
+        bars = ax.bar(
+            x + offset,
+            values,
+            width,
+            label=r["label"],
+            color=palette[i],
+            alpha=0.85,
+        )
+        all_bars.append((bars, values))
+
+    ax.set_ylim(0, 1.18)
+    ax.set_ylabel("Pass@1")
+    ax.set_title("Pass Rate per Category")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha="right")
+    ax.legend(fontsize=8, loc="upper left")
+    for bars, values in all_bars:
+        ax.bar_label(bars, fmt="%.2f", padding=2, fontsize=7)
+    ax.axhline(0, color="black", linewidth=0.5)
+
+    # Right: delta bars (each stage vs baseline)
+    ax2 = axes[1]
+    baseline_m = stage_results[0]["metrics"]
+    b_values = [baseline_m["overall_pass_rate"]] + [
+        baseline_m["per_category"].get(c, {}).get("pass_rate", 0.0)
+        for c in all_cats_sorted
+    ]
+
+    for i, r in enumerate(stage_results[1:], start=1):
+        m = r["metrics"]
+        s_values = [m["overall_pass_rate"]] + [
+            m["per_category"].get(c, {}).get("pass_rate", 0.0)
+            for c in all_cats_sorted
+        ]
+        deltas = [s - b for s, b in zip(s_values, b_values)]
+        offset = (i - 1 - (n_stages - 1) / 2 + 0.5) * width
+        bars_d = ax2.bar(
+            x + offset,
+            deltas,
+            width,
+            label=r["label"],
+            color=palette[i],
+            alpha=0.85,
+        )
+        ax2.bar_label(bars_d, fmt="%+.3f", padding=2, fontsize=7)
+
+    ax2.axhline(0, color="black", linewidth=0.8, linestyle="--")
+    ax2.set_ylabel("Δ Pass@1 (vs Baseline)")
+    ax2.set_title("Improvement over Baseline")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, rotation=20, ha="right")
+    ax2.legend(fontsize=8, loc="upper left")
+
+    fig.tight_layout()
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")

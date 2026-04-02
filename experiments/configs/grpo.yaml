@@ -74,6 +74,28 @@ reward:
   weight_schema: 0.35 # conformità strutturale ai vincoli del prompt
   weight_reasoning: 0.10 # bonus per <think>...</think> con contenuto reale (ora allineato al system prompt)
 
+# --- Curriculum Learning (opzionale) ---
+# Decommentare per abilitare il training multi-stage con difficoltà progressiva.
+# Quando abilitato, training.max_steps è ignorato (si usano gli step per stage).
+# Il dataset di training viene rigenerato in memoria per ogni stage — il dataset
+# su disco (dataset.path) è usato solo per il test split durante l'evaluation.
+# curriculum:
+#   enabled: true
+#   num_samples: 4000           # campioni di training rigenerati per stage
+#   stages:
+#     - name: "format_basics"
+#       steps: 300
+#       difficulty_weights:
+#         simple: 0.35
+#         medium: 0.55
+#         hard: 0.10
+#     - name: "full_difficulty"
+#       steps: 300
+#       difficulty_weights:
+#         simple: 0.10
+#         medium: 0.30
+#         hard: 0.60
+
 # --- Weights & Biases ---
 wandb:
   project: "grpo-strict-generation" # nome del progetto su wandb

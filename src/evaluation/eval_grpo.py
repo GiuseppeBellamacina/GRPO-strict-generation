@@ -36,6 +36,7 @@ from src.utils.config import load_config
 from src.utils.metrics import compute_detailed_metrics
 from src.utils.visualization import (
     plot_baseline_vs_grpo_comparison,
+    plot_curriculum_progression,
     plot_per_category_breakdown,
 )
 
@@ -140,6 +141,12 @@ def main() -> None:
         help="Also run baseline eval and generate comparison figures",
     )
     parser.add_argument(
+        "--curriculum",
+        action="store_true",
+        help="Evaluate all curriculum stages (looks for stages/ subdirectory "
+        "in output_dir).  Implies --compare.",
+    )
+    parser.add_argument(
         "--baseline-results",
         type=str,
         default="experiments/logs/baseline/results.json",
@@ -154,6 +161,10 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    # --curriculum implies --compare
+    if args.curriculum:
+        args.compare = True
 
     # Determine checkpoint path: explicit > final/ > latest checkpoint-*
     output_dir = config["training"]["output_dir"]
@@ -232,51 +243,109 @@ def main() -> None:
     ]
     difficulties = list(test_ds["difficulty"])
 
-    # ── Evaluate GRPO model ───────────────────────────────────────────────
-    print(f"\n{'='*50}")
-    print(f"Evaluating GRPO model ({ckpt_name})")
-    print(f"{'='*50}")
+    # ── Discover models to evaluate ─────────────────────────────────────
+    # In curriculum mode, evaluate all stage_end models; otherwise just the
+    # single checkpoint.
+    eval_targets: list[tuple[str, str, bool]] = []
+    # Each entry: (label, path, is_checkpoint)
 
-    # Free the temp tokenizer and reload with the model
+    if args.curriculum:
+        stages_dir = Path(output_dir) / "stages"
+        if not stages_dir.exists():
+            print(
+                f"No stages/ directory found in {output_dir}. "
+                "Run curriculum training first."
+            )
+            wandb.finish()
+            return
+        stage_dirs = sorted(
+            [d for d in stages_dir.iterdir() if d.is_dir()],
+            key=lambda p: p.name,
+        )
+        if not stage_dirs:
+            print(f"No stage directories found in {stages_dir}")
+            wandb.finish()
+            return
+        for sd in stage_dirs:
+            # Parse label from dir name: "stage_1_format_basics" → "Stage 1: format_basics"
+            parts = sd.name.split("_", 2)
+            if len(parts) >= 3:
+                label = f"Stage {parts[1]}: {parts[2]}"
+            else:
+                label = sd.name
+            eval_targets.append((label, str(sd), True))
+        print(
+            f"\n[curriculum] Found {len(eval_targets)} stages to evaluate"
+        )
+        for label, path, _ in eval_targets:
+            print(f"  {label}: {path}")
+    else:
+        eval_targets.append((f"GRPO ({ckpt_name})", ckpt_path, True))
+
+    # ── Evaluate each target ──────────────────────────────────────────────
+    # Free the temp tokenizer before loading eval models
     del tokenizer
     import gc
 
     gc.collect()
     torch.cuda.empty_cache()
 
-    grpo_metrics = _evaluate_model(
-        config,
-        ckpt_path,
-        test_ds,
-        prompts,
-        difficulties,
-        gen_config,
-        is_checkpoint=True,
-    )
+    all_eval_results: list[dict] = []
 
-    print(f"\nGRPO Pass@1: {grpo_metrics['overall_pass_rate']:.4f}")
-    print("\nPer-category:")
-    for cat, stats in grpo_metrics["per_category"].items():
-        print(
-            f"  {cat}: {stats['pass_rate']:.4f} ({stats['valid']}/{stats['total']})"
+    for label, model_path, is_ckpt in eval_targets:
+        print(f"\n{'='*50}")
+        print(f"Evaluating: {label}")
+        print(f"{'='*50}")
+
+        metrics = _evaluate_model(
+            config,
+            model_path,
+            test_ds,
+            prompts,
+            difficulties,
+            gen_config,
+            is_checkpoint=is_ckpt,
         )
 
-    # Save GRPO results
-    grpo_results = {
-        "checkpoint": ckpt_path,
-        "metrics": grpo_metrics,
-    }
-    results_path = eval_output / f"eval_{ckpt_name}.json"
-    results_path.write_text(
-        json.dumps(grpo_results, indent=2, default=str),
-        encoding="utf-8",
-    )
-    print(f"\nResults saved to {results_path}")
+        print(f"\n{label} Pass@1: {metrics['overall_pass_rate']:.4f}")
+        print("Per-category:")
+        for cat, stats in metrics["per_category"].items():
+            print(
+                f"  {cat}: {stats['pass_rate']:.4f} "
+                f"({stats['valid']}/{stats['total']})"
+            )
 
-    # GRPO-only figure
-    fig_path = str(figures_dir / f"grpo_{ckpt_name}_pass_rates.png")
-    plot_per_category_breakdown(grpo_metrics, output_path=fig_path)
-    wandb.log({"eval/grpo_pass_rates": wandb.Image(fig_path)})
+        all_eval_results.append(
+            {"label": label, "path": model_path, "metrics": metrics}
+        )
+
+        # Save individual results
+        safe_name = Path(model_path).name
+        result_json = {
+            "checkpoint": model_path,
+            "label": label,
+            "metrics": metrics,
+        }
+        results_path = eval_output / f"eval_{safe_name}.json"
+        results_path.write_text(
+            json.dumps(result_json, indent=2, default=str),
+            encoding="utf-8",
+        )
+        print(f"Results saved to {results_path}")
+
+        # Per-model figure
+        fig_path = str(figures_dir / f"pass_rates_{safe_name}.png")
+        plot_per_category_breakdown(
+            metrics,
+            title=f"Pass Rate — {label}",
+            output_path=fig_path,
+        )
+        wandb.log(
+            {f"eval/{safe_name}_pass_rates": wandb.Image(fig_path)}
+        )
+
+    # Use the last evaluated model as "grpo_metrics" for backward compat
+    grpo_metrics = all_eval_results[-1]["metrics"]
 
     # ── Baseline comparison ───────────────────────────────────────────────
     baseline_metrics = None
@@ -319,8 +388,13 @@ def main() -> None:
             print(f"Baseline results saved to {bl_path}")
 
     if baseline_metrics:
+        model_name = config["model"]["name"].split("/")[-1]
+
+        # ── Standard 2-way comparison (baseline vs final) ─────────────
+        # In curriculum mode, individual baseline-vs-stage charts are
+        # generated below — skip the redundant overall chart.
         print(f"\n{'='*50}")
-        print("Comparison: Baseline vs GRPO")
+        print("Comparison: Baseline vs GRPO (final stage)")
         print(f"{'='*50}")
         print(
             f"  Baseline Pass@1: {baseline_metrics['overall_pass_rate']:.4f}"
@@ -334,23 +408,22 @@ def main() -> None:
         )
         print(f"  Delta:           {delta:+.4f}")
 
-        # Comparison figure
-        model_name = config["model"]["name"].split("/")[-1]
-        comp_fig_path = str(
-            figures_dir / "baseline_vs_grpo_comparison.png"
-        )
-        plot_baseline_vs_grpo_comparison(
-            baseline_metrics=baseline_metrics,
-            grpo_metrics=grpo_metrics,
-            model_name=model_name,
-            output_path=comp_fig_path,
-        )
-        wandb.log(
-            {"eval/baseline_vs_grpo": wandb.Image(comp_fig_path)}
-        )
+        if not args.curriculum:
+            comp_fig_path = str(
+                figures_dir / "baseline_vs_grpo_comparison.png"
+            )
+            plot_baseline_vs_grpo_comparison(
+                baseline_metrics=baseline_metrics,
+                grpo_metrics=grpo_metrics,
+                model_name=model_name,
+                output_path=comp_fig_path,
+            )
+            wandb.log(
+                {"eval/baseline_vs_grpo": wandb.Image(comp_fig_path)}
+            )
 
         # Save comparison JSON
-        comparison = {
+        comparison: dict = {
             "baseline_pass_rate": baseline_metrics[
                 "overall_pass_rate"
             ],
@@ -359,6 +432,73 @@ def main() -> None:
             "baseline_per_category": baseline_metrics["per_category"],
             "grpo_per_category": grpo_metrics["per_category"],
         }
+
+        # ── Curriculum progression chart (baseline + all stages) ──────
+        if args.curriculum and len(all_eval_results) > 1:
+            print(f"\n{'='*50}")
+            print("Curriculum progression: Baseline → all stages")
+            print(f"{'='*50}")
+
+            stage_results = [
+                {"label": "Baseline", "metrics": baseline_metrics}
+            ] + [
+                {"label": r["label"], "metrics": r["metrics"]}
+                for r in all_eval_results
+            ]
+
+            for r in stage_results:
+                print(
+                    f"  {r['label']}: "
+                    f"Pass@1={r['metrics']['overall_pass_rate']:.4f}"
+                )
+
+            # Individual baseline-vs-stage comparison charts
+            for r in all_eval_results:
+                safe_name = Path(r["path"]).name
+                stage_comp_path = str(
+                    figures_dir / f"baseline_vs_{safe_name}.png"
+                )
+                plot_baseline_vs_grpo_comparison(
+                    baseline_metrics=baseline_metrics,
+                    grpo_metrics=r["metrics"],
+                    model_name=f"{model_name} — {r['label']}",
+                    output_path=stage_comp_path,
+                )
+                wandb.log(
+                    {
+                        f"eval/baseline_vs_{safe_name}": wandb.Image(
+                            stage_comp_path
+                        )
+                    }
+                )
+
+            # Unified curriculum progression chart
+            curric_fig_path = str(
+                figures_dir / "curriculum_progression.png"
+            )
+            plot_curriculum_progression(
+                stage_results=stage_results,
+                model_name=model_name,
+                output_path=curric_fig_path,
+            )
+            wandb.log(
+                {
+                    "eval/curriculum_progression": wandb.Image(
+                        curric_fig_path
+                    )
+                }
+            )
+
+            # Extend comparison JSON with per-stage data
+            comparison["curriculum_stages"] = [
+                {
+                    "label": r["label"],
+                    "pass_rate": r["metrics"]["overall_pass_rate"],
+                    "per_category": r["metrics"]["per_category"],
+                }
+                for r in stage_results
+            ]
+
         comp_path = eval_output / "comparison.json"
         comp_path.write_text(
             json.dumps(comparison, indent=2), encoding="utf-8"

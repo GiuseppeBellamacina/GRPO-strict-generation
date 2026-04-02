@@ -36,6 +36,7 @@ from src.datasets.dataloader import (
 from src.evaluation.eval_baseline import generate_completions
 from src.models.model_loader import load_model_and_tokenizer
 from src.training.callbacks import (
+    CurriculumStepOffsetCallback,
     HighPrecisionLogCallback,
     SaveWandbRunIdCallback,
     WandbAlertCallback,
@@ -134,6 +135,361 @@ def _prepare_prompt_dataset(
     return Dataset.from_list(formatted)
 
 
+def _generate_curriculum_dataset(
+    config: dict[str, Any],
+    tokenizer: Any,
+    difficulty_weights: dict[str, float],
+    num_samples: int = 4000,
+    seed: int = 42,
+    save_dir: str | None = None,
+) -> Dataset:
+    """Generate a training dataset with specific difficulty weights and save to disk.
+
+    Unlike ``_prepare_prompt_dataset`` (which loads from disk), this creates
+    fresh samples — used exclusively by curriculum training to produce a
+    different difficulty distribution per stage.
+
+    If ``save_dir`` is provided, the raw dataset (before prompt formatting)
+    is saved to that directory for reproducibility.  If a dataset already
+    exists at that path **with matching weights and sample count**, it is
+    loaded from disk instead of being regenerated.
+    """
+    from src.datasets.synthetic_dataset import generate_dataset
+
+    thinking = config.get("dataset", {}).get("thinking", True)
+
+    # ── Check for cached dataset on disk ──────────────────────────────────
+    if save_dir is not None:
+        save_path = Path(save_dir)
+        meta_path = save_path / "curriculum_meta.json"
+        expected_meta = {
+            "difficulty_weights": difficulty_weights,
+            "num_samples": num_samples,
+            "seed": seed,
+            "thinking": thinking,
+        }
+
+        if save_path.exists() and meta_path.exists():
+            try:
+                existing_meta = json.loads(
+                    meta_path.read_text(encoding="utf-8")
+                )
+                if existing_meta == expected_meta:
+                    if is_main_process():
+                        print(
+                            f"[curriculum] Loading cached dataset from {save_path}"
+                        )
+                    from datasets import load_from_disk
+
+                    raw_ds = load_from_disk(str(save_path))
+                    train_ds = raw_ds["train"]  # type: ignore[index]
+                    formatted = []
+                    for i in range(len(train_ds)):
+                        sample = train_ds[i]
+                        prompt = format_prompt_for_model(
+                            sample, tokenizer
+                        )
+                        formatted.append({"prompt": prompt})
+                    if is_main_process():
+                        diffs = list(train_ds["difficulty"])
+                        print(
+                            f"[curriculum] Loaded {len(formatted)} samples from cache"
+                        )
+                        for d in ["simple", "medium", "hard"]:
+                            count = sum(1 for x in diffs if x == d)
+                            pct = count / len(diffs) * 100
+                            print(f"  {d}: {count} ({pct:.1f}%)")
+                    return Dataset.from_list(formatted)
+                else:
+                    if is_main_process():
+                        print(
+                            f"[curriculum] Cached dataset at {save_path} has "
+                            f"different config — regenerating"
+                        )
+            except Exception:
+                if is_main_process():
+                    print(
+                        f"[curriculum] Failed to load cache from {save_path} "
+                        f"— regenerating"
+                    )
+
+    # ── Generate fresh dataset ────────────────────────────────────────────
+    ds = generate_dataset(
+        num_samples=num_samples,
+        seed=seed,
+        test_ratio=0.0,  # curriculum stages are train-only
+        thinking=thinking,
+        difficulty_weights=difficulty_weights,
+    )
+    train_ds = ds["train"]
+
+    # Count distribution
+    diff_counts: dict[str, int] = {
+        "simple": 0,
+        "medium": 0,
+        "hard": 0,
+    }
+    for i in range(len(train_ds)):
+        diff_counts[train_ds[i]["difficulty"]] += 1
+
+    if is_main_process():
+        print(
+            f"[curriculum] Generated {num_samples} samples (seed={seed})"
+        )
+        for d in ["simple", "medium", "hard"]:
+            pct = diff_counts[d] / num_samples * 100
+            print(f"  {d}: {diff_counts[d]} ({pct:.1f}%)")
+
+    # ── Save to disk ──────────────────────────────────────────────────────
+    if save_dir is not None and is_main_process():
+        save_path = Path(save_dir)
+        save_path.mkdir(parents=True, exist_ok=True)
+        ds.save_to_disk(str(save_path))
+        meta_path = save_path / "curriculum_meta.json"
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "difficulty_weights": difficulty_weights,
+                    "num_samples": num_samples,
+                    "seed": seed,
+                    "thinking": thinking,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"[curriculum] Dataset saved to {save_path}")
+
+    # ── Format prompts ────────────────────────────────────────────────────
+    formatted: list[dict[str, str]] = []
+    for i in range(len(train_ds)):
+        sample = train_ds[i]
+        prompt = format_prompt_for_model(sample, tokenizer)
+        formatted.append({"prompt": prompt})
+
+    return Dataset.from_list(formatted)
+
+
+def _run_curriculum_training(
+    config: dict[str, Any],
+    model: Any,
+    tokenizer: Any,
+) -> None:
+    """Run multi-stage curriculum GRPO training.
+
+    Each stage regenerates the training dataset with different difficulty
+    weights, allowing the model to first consolidate format basics on
+    easier examples before progressing to harder structural tasks.
+
+    The same model object is reused across stages (weights are updated
+    in-place by GRPOTrainer), while a fresh optimizer and LR schedule
+    are created per stage.
+    """
+    curriculum = config["curriculum"]
+    stages = curriculum["stages"]
+    base_output_dir = config["training"]["output_dir"]
+    base_data_dir = config["dataset"].get("path", "data/synthetic")
+    log_dir = config["training"].get(
+        "log_dir", "experiments/logs/grpo"
+    )
+    num_samples = curriculum.get("num_samples", 4000)
+    thinking = config.get("dataset", {}).get("thinking", True)
+    total_steps = sum(s["steps"] for s in stages)
+
+    # ── Wandb setup ───────────────────────────────────────────────────────
+    wandb_cfg = config.get("wandb", {})
+    wandb_project = wandb_cfg.get("project", "grpo-strict-generation")
+    os.environ["WANDB_PROJECT"] = wandb_project
+    os.environ["WANDB_DIR"] = log_dir
+    from datetime import datetime
+
+    group_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.environ["WANDB_RUN_GROUP"] = (
+        f"{wandb_cfg.get('run_name', 'curriculum')}-{group_ts}"
+    )
+    os.environ["WANDB_TAGS"] = ",".join(
+        wandb_cfg.get("tags", ["grpo", "curriculum"])
+    )
+
+    if is_main_process():
+        print(f"\n{'=' * 60}")
+        print(
+            f"CURRICULUM TRAINING — {len(stages)} stages, "
+            f"{total_steps} total steps"
+        )
+        print(f"{'=' * 60}")
+        for i, s in enumerate(stages):
+            print(
+                f"  Stage {i + 1}: {s.get('name', f'stage_{i + 1}')} — "
+                f"{s['steps']} steps — weights={s['difficulty_weights']}"
+            )
+        print()
+
+    cumulative_steps = 0
+
+    for stage_idx, stage in enumerate(stages):
+        stage_name = stage.get("name", f"stage_{stage_idx + 1}")
+
+        if is_main_process():
+            print(f"\n{'=' * 60}")
+            print(
+                f"STAGE {stage_idx + 1}/{len(stages)}: {stage_name}"
+            )
+            print(f"{'=' * 60}")
+
+        # 1. Generate (or load cached) dataset with stage-specific difficulty weights
+        stage_data_dir = str(
+            Path(base_data_dir)
+            / f"curriculum_stage_{stage_idx + 1}_{stage_name}"
+        )
+        if is_main_process():
+            print(
+                f"\n[curriculum] >>> Switching dataset for stage "
+                f"{stage_idx + 1}/{len(stages)}: {stage_name}"
+            )
+            print(
+                f"[curriculum]     Difficulty weights: {stage['difficulty_weights']}"
+            )
+            print(f"[curriculum]     Dataset dir: {stage_data_dir}")
+        stage_dataset = _generate_curriculum_dataset(
+            config,
+            tokenizer,
+            difficulty_weights=stage["difficulty_weights"],
+            num_samples=num_samples,
+            seed=42 + stage_idx,
+            save_dir=stage_data_dir,
+        )
+
+        # 2. Stage-specific training config overrides
+        stage_training = {**config["training"]}
+        stage_training["max_steps"] = stage["steps"]
+        stage_output = str(
+            Path(base_output_dir)
+            / f"stage_{stage_idx + 1}_{stage_name}"
+        )
+        stage_training["output_dir"] = stage_output
+        if "learning_rate" in stage:
+            stage_training["learning_rate"] = stage["learning_rate"]
+
+        # 3. Stage-specific GRPO config overrides
+        stage_grpo = {**config["grpo"]}
+        if "temperature" in stage:
+            stage_grpo["temperature"] = stage["temperature"]
+        if "num_generations" in stage:
+            stage_grpo["num_generations"] = stage["num_generations"]
+
+        # 4. Stage-specific reward weights (optional override)
+        stage_reward_cfg = {**config.get("reward", {})}
+        if "reward" in stage:
+            stage_reward_cfg.update(stage["reward"])
+        reward_fn = build_reward_function(
+            stage_reward_cfg, thinking=thinking
+        )
+
+        # 5. Build GRPOConfig
+        stage_wandb = {
+            **wandb_cfg,
+            "run_name": (
+                f"{wandb_cfg.get('run_name', 'grpo')}-{stage_name}"
+            ),
+        }
+        stage_full_config = {**config, "wandb": stage_wandb}
+        grpo_config = _build_grpo_config(
+            stage_training, stage_grpo, stage_full_config
+        )
+
+        if is_main_process():
+            print(
+                f"[stage {stage_idx + 1}] steps={stage['steps']} "
+                f"temp={stage_grpo.get('temperature', config['grpo'].get('temperature', 0.7))} "
+                f"lr={stage_training.get('learning_rate', config['training'].get('learning_rate', 5e-6))} "
+                f"output={stage_output}"
+            )
+
+        # 6. Callbacks
+        wandb_run_id_file = (
+            Path(log_dir) / f".wandb_run_id_stage_{stage_idx + 1}"
+        )
+        stage_label = (
+            f"stage {stage_idx + 1}/{len(stages)}: {stage_name}"
+        )
+
+        # 7. Create trainer and train
+        trainer = GRPOTrainer(
+            model=model,
+            args=grpo_config,
+            train_dataset=stage_dataset,
+            reward_funcs=reward_fn,
+            processing_class=tokenizer,
+            callbacks=[
+                HighPrecisionLogCallback(),
+                WandbAlertCallback(stage_label=stage_label),
+                CurriculumStepOffsetCallback(
+                    step_offset=cumulative_steps,
+                    stage_idx=stage_idx,
+                    stage_name=stage_name,
+                    difficulty_weights=stage["difficulty_weights"],
+                ),
+                SaveWandbRunIdCallback(wandb_run_id_file),
+            ],
+        )
+
+        trainer.train()
+
+        # 8. Update cumulative step counter
+        cumulative_steps += stage["steps"]
+
+        # 9. Save stage model to a dedicated directory (outside checkpoint dirs
+        #    so save_total_limit never deletes them)
+        stages_root = Path(base_output_dir) / "stages"
+        stage_end_path = (
+            stages_root / f"stage_{stage_idx + 1}_{stage_name}"
+        )
+        if is_main_process():
+            print(
+                f"[stage {stage_idx + 1}] Saving model to "
+                f"{stage_end_path}..."
+            )
+            stage_end_path.mkdir(parents=True, exist_ok=True)
+        trainer.save_model(str(stage_end_path))
+        tokenizer.save_pretrained(str(stage_end_path))
+
+        # 10. Finish wandb run before next stage
+        if is_main_process():
+            wandb.finish()
+
+        # 11. Free trainer resources (model stays in memory)
+        del trainer
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        if is_main_process():
+            print(f"[stage {stage_idx + 1}] {stage_name} completed")
+
+    # ── Summary ───────────────────────────────────────────────────────────
+    stages_root = Path(base_output_dir) / "stages"
+    final_stage = stages[-1]
+    final_name = final_stage.get("name", f"stage_{len(stages)}")
+    final_model_path = (
+        stages_root / f"stage_{len(stages)}_{final_name}"
+    )
+
+    if is_main_process():
+        print(f"\n{'=' * 60}")
+        print("CURRICULUM TRAINING COMPLETE")
+        print(f"Final model: {final_model_path}")
+        print(f"{'=' * 60}")
+
+    # Skip in-process eval with Unsloth (same rationale as single-stage)
+    if config.get("model", {}).get("use_unsloth", False):
+        if is_main_process():
+            print(
+                "\n[curriculum] Skipping in-process checkpoint eval "
+                "(Unsloth patches incompatible with vanilla HF loading)."
+                "\nUse eval scripts for post-training evaluation."
+            )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="GRPO training for strict code/JSON generation"
@@ -189,6 +545,12 @@ def main() -> None:
     if is_main_process():
         print(f"Loading model: {config['model']['name']}")
     model, tokenizer = load_model_and_tokenizer(config)
+
+    # ── Curriculum mode ───────────────────────────────────────────────────
+    curriculum = config.get("curriculum")
+    if curriculum and curriculum.get("enabled", True):
+        _run_curriculum_training(config, model, tokenizer)
+        return
 
     # Prepare dataset
     if is_main_process():

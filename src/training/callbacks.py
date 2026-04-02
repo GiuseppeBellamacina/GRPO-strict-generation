@@ -46,10 +46,20 @@ class WandbAlertCallback(TrainerCallback):
 
     Requires ``max_steps`` to be set in the training args so that progress
     percentages can be computed.
+
+    Args:
+        stage_label: Optional label (e.g. ``"stage 2/3: progressive"``) to
+            include in alert titles for curriculum training.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, stage_label: str | None = None) -> None:
         self._alerted: set[int] = set()
+        self._stage_label = stage_label
+
+    def _title(self, base: str) -> str:
+        if self._stage_label:
+            return f"{base} [{self._stage_label}]"
+        return base
 
     def on_train_begin(
         self,
@@ -61,7 +71,7 @@ class WandbAlertCallback(TrainerCallback):
         if not state.is_local_process_zero:
             return
         wandb.alert(
-            title="Training started",
+            title=self._title("Training started"),
             text=f"max_steps={args.max_steps}, lr={args.learning_rate}",
             level=wandb.AlertLevel.INFO,
         )
@@ -82,7 +92,7 @@ class WandbAlertCallback(TrainerCallback):
                 self._alerted.add(milestone)
                 reward = logs.get("reward", "n/a") if logs else "n/a"
                 wandb.alert(
-                    title=f"Training {milestone}%",
+                    title=self._title(f"Training {milestone}%"),
                     text=f"step {state.global_step}/{args.max_steps}, reward={reward}",
                     level=wandb.AlertLevel.INFO,
                 )
@@ -97,10 +107,73 @@ class WandbAlertCallback(TrainerCallback):
         if not state.is_local_process_zero:
             return
         wandb.alert(
-            title="Training completed",
+            title=self._title("Training completed"),
             text=f"Finished at step {state.global_step}/{args.max_steps}",
             level=wandb.AlertLevel.INFO,
         )
+
+
+class CurriculumStepOffsetCallback(TrainerCallback):
+    """Offset ``global_step`` in wandb logs so steps are continuous across stages.
+
+    Without this callback each curriculum stage logs steps starting from 0,
+    making wandb charts discontinuous.  This callback adds ``step_offset``
+    to every logged step so stage 2 continues where stage 1 left off.
+
+    It also logs stage metadata (name, difficulty weights) to wandb.config
+    at the start of training.
+    """
+
+    def __init__(
+        self,
+        step_offset: int,
+        stage_idx: int,
+        stage_name: str,
+        difficulty_weights: dict[str, float],
+    ) -> None:
+        self._step_offset = step_offset
+        self._stage_idx = stage_idx
+        self._stage_name = stage_name
+        self._difficulty_weights = difficulty_weights
+
+    def on_train_begin(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: Any,
+    ) -> None:
+        if not state.is_local_process_zero:
+            return
+        if wandb.run is not None:
+            wandb.config.update(
+                {
+                    "curriculum_stage": self._stage_idx + 1,
+                    "curriculum_stage_name": self._stage_name,
+                    "curriculum_difficulty_weights": self._difficulty_weights,
+                    "curriculum_step_offset": self._step_offset,
+                },
+                allow_val_change=True,
+            )
+
+    def on_log(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        logs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if not state.is_local_process_zero or not logs:
+            return
+        if wandb.run is not None:
+            wandb.log(
+                {
+                    "curriculum/global_step": state.global_step
+                    + self._step_offset
+                },
+                step=state.global_step + self._step_offset,
+            )
 
 
 class SaveWandbRunIdCallback(TrainerCallback):

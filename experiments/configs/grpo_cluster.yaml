@@ -45,9 +45,9 @@ dataset:
 
 # --- Iperparametri di training ---
 training:
-  max_steps: 1500
-  per_device_train_batch_size: 1 # TODO: prova con 2
-  gradient_accumulation_steps: 8 # TODO: prova con 4
+  max_steps: 2500 # ignorato quando curriculum.enabled=true (si usano gli step per stage)
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
   learning_rate: 5.0e-6
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
@@ -64,20 +64,51 @@ training:
 # --- Parametri GRPO ---
 grpo:
   num_generations: 8 # L40S: più rollout paralleli → stime GRPO migliori
-  max_completion_length: 768 # completions più lunghe per ridurre clipping
+  max_completion_length: 1024 # completions più lunghe per ridurre clipping
   max_prompt_length: 512
   beta: 0.04
-  temperature: 0.9
+  temperature: 0.7
 
 # --- Pesi della reward function ---
 reward:
-  weight_format: 0.20
+  weight_format: 0.30
   weight_validity: 0.35
   weight_schema: 0.35
-  weight_reasoning: 0.10
+  weight_reasoning: 0.0
+
+# --- Curriculum Learning ---
+# Multi-stage training: easy samples first to consolidate format, then
+# progressively harder to develop structural competence.
+# Quando abilitato, training.max_steps è ignorato (si usano gli step per stage).
+# Il dataset di training viene rigenerato in memoria per ogni stage — il dataset
+# su disco (dataset.path) è usato solo per il test split durante l'evaluation.
+curriculum:
+  enabled: true
+  num_samples: 4000 # campioni di training rigenerati per stage
+  stages:
+    - name: "format_basics"
+      steps: 800
+      difficulty_weights:
+        simple: 0.35
+        medium: 0.55
+        hard: 0.10
+      temperature: 0.8 # leggermente più alta per esplorare pattern di formato
+    - name: "progressive"
+      steps: 800
+      difficulty_weights:
+        simple: 0.15
+        medium: 0.35
+        hard: 0.50
+    - name: "full_difficulty"
+      steps: 900
+      difficulty_weights:
+        simple: 0.10
+        medium: 0.25
+        hard: 0.65
+      temperature: 0.6 # più bassa per output hard più consistenti
 
 # --- Weights & Biases ---
 wandb:
   project: "grpo-strict-generation"
-  run_name: "grpo-smollm2-360m-cluster"
-  tags: ["grpo", "SmolLM2-360M", "json-only", "cluster-l40s"]
+  run_name: "grpo-smollm2-360m-curriculum"
+  tags: ["grpo", "SmolLM2-360M", "json-only", "cluster-l40s", "curriculum"]

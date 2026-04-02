@@ -41,15 +41,22 @@ def _build_system_prompt(thinking: bool = True) -> str:
 
 
 def generate_sample(
-    rng: random.Random | None = None, thinking: bool = True
+    rng: random.Random | None = None,
+    thinking: bool = True,
+    difficulty_weights: dict[str, float] | None = None,
 ) -> dict[str, str]:
     """Generate a single prompt sample with metadata."""
     if rng is None:
         rng = random.Random()
 
+    weights = (
+        difficulty_weights
+        if difficulty_weights is not None
+        else DIFFICULTY_WEIGHTS
+    )
     difficulty = rng.choices(
-        list(DIFFICULTY_WEIGHTS.keys()),
-        weights=list(DIFFICULTY_WEIGHTS.values()),
+        list(weights.keys()),
+        weights=list(weights.values()),
         k=1,
     )[0]
 
@@ -73,11 +80,16 @@ def generate_dataset(
     seed: int = 42,
     test_ratio: float = 0.2,
     thinking: bool = True,
+    difficulty_weights: dict[str, float] | None = None,
 ) -> DatasetDict:
     """Generate the full synthetic dataset as a HuggingFace DatasetDict."""
     rng = random.Random(seed)
     samples = [
-        generate_sample(rng, thinking=thinking)
+        generate_sample(
+            rng,
+            thinking=thinking,
+            difficulty_weights=difficulty_weights,
+        )
         for _ in range(num_samples)
     ]
 
@@ -88,14 +100,20 @@ def generate_dataset(
     test_samples = samples[split_idx:]
 
     def _to_columnar(rows: list[dict]) -> dict:
+        if not rows:
+            return {
+                k: []
+                for k in ["system_prompt", "prompt", "difficulty"]
+            }
         return {k: [r[k] for r in rows] for k in rows[0]}
 
-    return DatasetDict(
-        {
-            "train": Dataset.from_dict(_to_columnar(train_samples)),
-            "test": Dataset.from_dict(_to_columnar(test_samples)),
-        }
-    )
+    splits: dict[str, Dataset] = {
+        "train": Dataset.from_dict(_to_columnar(train_samples)),
+    }
+    if test_samples:
+        splits["test"] = Dataset.from_dict(_to_columnar(test_samples))
+
+    return DatasetDict(splits)
 
 
 def main() -> None:

@@ -3,8 +3,9 @@
 # SLURM batch script — Post-GRPO Evaluation sul cluster DMI
 #
 # Uso:
-#   sbatch cluster/eval_grpo.sh                # solo eval GRPO
-#   COMPARE=1 sbatch cluster/eval_grpo.sh      # eval GRPO + comparison con baseline
+#   sbatch cluster/eval_grpo.sh                              # solo eval GRPO
+#   COMPARE=1 sbatch cluster/eval_grpo.sh                    # eval GRPO + comparison con baseline
+#   CURRICULUM=1 sbatch cluster/eval_grpo.sh                 # eval tutti gli stage + comparison
 #
 # Se baseline results.json non esiste e COMPARE=1, lo script
 # esegue anche la baseline evaluation automaticamente.
@@ -28,6 +29,7 @@
 CONFIG="experiments/configs/grpo_cluster.yaml"
 CHECKPOINT=""   # vuoto = usa final, oppure "experiments/checkpoints/grpo/checkpoint-480"
 COMPARE="${COMPARE:-0}"   # 0 = solo GRPO, 1 = anche comparison con baseline
+CURRICULUM="${CURRICULUM:-0}"   # 0 = singolo checkpoint, 1 = eval tutti gli stage (implica COMPARE=1)
 
 # ── Setup ambiente ───────────────────────────────────────────────────────────
 set -e
@@ -39,6 +41,7 @@ echo "  Node:      $(hostname)"
 echo "  Date:      $(date)"
 echo "  Config:    ${CONFIG}"
 echo "  Compare:   ${COMPARE}"
+echo "  Curriculum: ${CURRICULUM}"
 echo "============================================"
 
 mkdir -p logs
@@ -59,6 +62,9 @@ if [ -n "$CHECKPOINT" ]; then
 fi
 if [ "$COMPARE" = "1" ]; then
     EVAL_ARGS="${EVAL_ARGS} --compare"
+fi
+if [ "$CURRICULUM" = "1" ]; then
+    EVAL_ARGS="${EVAL_ARGS} --curriculum"
 fi
 
 echo ""

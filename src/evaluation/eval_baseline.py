@@ -20,10 +20,10 @@ import torch  # noqa: E402
 import wandb  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 from tqdm import tqdm  # noqa: E402
-from transformers import (
+from transformers import (  # noqa: E402
     PreTrainedModel,
     PreTrainedTokenizerBase,
-)  # noqa: E402
+)
 
 from src.datasets.dataloader import (  # noqa: E402
     format_prompt_for_model,
@@ -35,10 +35,10 @@ from src.models.model_loader import (  # noqa: E402
     load_tokenizer,
 )
 from src.utils.config import load_config  # noqa: E402
-from src.utils.metrics import (
+from src.utils.metrics import (  # noqa: E402
     compute_detailed_metrics,
     pass_at_k,
-)  # noqa: E402
+)
 
 load_dotenv()
 
