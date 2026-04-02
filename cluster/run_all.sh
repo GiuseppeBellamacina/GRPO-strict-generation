@@ -1,16 +1,25 @@
 #!/bin/bash
 # ============================================================================
-# SLURM batch script — Lancia training + evaluation per più modelli
+# Lancia training + evaluation per più modelli in catena.
 #
-# Tutti i job vengono concatenati in sequenza (un solo job alla volta):
-#   train-model1 → eval-model1 → train-model2 → eval-model2 → ...
-#
-# Questo è necessario quando la QoS permette un solo job attivo.
+# La QoS permette un solo job alla volta, quindi un watcher su screen
+# controlla ogni 60s se la coda è vuota e sottomette il prossimo job.
 #
 # Uso:
 #   bash cluster/run_all.sh               # lancia tutti i modelli
 #   bash cluster/run_all.sh --eval-only   # solo evaluation (skip training)
 #   bash cluster/run_all.sh --train-only  # solo training (skip eval)
+#
+# Monitorare:
+#   tmux attach -t grpo-chain             # vedi il watcher live (Ctrl+B D per staccarti)
+#   tail -f logs/chain_watcher.log        # log del watcher
+#   myjobs                                # job attivo su SLURM
+#
+# Interrompere:
+#   tmux kill-session -t grpo-chain       # uccidi il watcher (il job in corso continua)
+#   killalljobs                           # cancella anche il job SLURM attivo
+#
+# Il watcher si chiude da solo quando la catena è completata.
 #
 # Ogni modello ha la sua config con output_dir e log_dir separati,
 # quindi non ci sono conflitti tra i risultati.
@@ -42,55 +51,80 @@ MODELS=(
     "gemma2-2b:experiments/configs/grpo_gemma2.yaml"
 )
 
-echo "============================================"
-echo "  Multi-model GRPO Pipeline (sequenziale)"
-echo "  Date:  $(date)"
-echo "  Train: $([ $TRAIN -eq 1 ] && echo 'YES' || echo 'SKIP')"
-echo "  Eval:  $([ $EVAL -eq 1 ] && echo 'YES' || echo 'SKIP')"
-echo "  Models: ${#MODELS[@]}"
-echo "============================================"
-echo ""
+PROJ_DIR="$HOME/GRPO-strict-generation"
+CHAIN_FILE="$PROJ_DIR/.job_chain"
 
-# ── Lancio job in catena ──────────────────────────────────────────────────────
-# Ogni job dipende dal precedente (--dependency=afterany) così gira uno alla volta.
-PREV_JOB=""
+# ── Costruisci la catena ──────────────────────────────────────────────────────
+# Ogni riga: TYPE:CONFIG:TAG
+> "$CHAIN_FILE"  # svuota/crea il file
 
 for entry in "${MODELS[@]}"; do
     TAG="${entry%%:*}"
     CFG="${entry##*:}"
 
-    echo "── $TAG ──────────────────────────────────"
-    echo "   Config: $CFG"
-
-    DEP_ARG=""
-    if [ -n "$PREV_JOB" ]; then
-        DEP_ARG="--dependency=afterany:${PREV_JOB}"
-    fi
-
     if [ $TRAIN -eq 1 ]; then
-        TRAIN_JOB=$(CONFIG="$CFG" sbatch --parsable \
-            --job-name="train-${TAG}" \
-            $DEP_ARG \
-            cluster/train.sh)
-        echo "   Train job: $TRAIN_JOB$([ -n "$PREV_JOB" ] && echo " (after $PREV_JOB)")"
-        PREV_JOB="$TRAIN_JOB"
-        DEP_ARG="--dependency=afterok:${TRAIN_JOB}"
+        echo "train:${CFG}:${TAG}" >> "$CHAIN_FILE"
     fi
-
     if [ $EVAL -eq 1 ]; then
-        EVAL_JOB=$(CONFIG="$CFG" CURRICULUM=1 sbatch --parsable \
-            --job-name="eval-${TAG}" \
-            $DEP_ARG \
-            cluster/eval.sh)
-        echo "   Eval job:  $EVAL_JOB$([ -n "$PREV_JOB" ] && echo " (after $PREV_JOB)")"
-        PREV_JOB="$EVAL_JOB"
+        echo "eval:${CFG}:${TAG}" >> "$CHAIN_FILE"
     fi
-
-    echo ""
 done
 
+TOTAL=$(wc -l < "$CHAIN_FILE")
+
 echo "============================================"
-echo "  Catena di ${#MODELS[@]} modelli sottomessa!"
-echo "  Ordine: $(for e in "${MODELS[@]}"; do printf "${e%%:*} → "; done | sed 's/ → $//')"
-echo "  Usa 'squeue -u \$USER' per monitorare"
+echo "  Multi-model GRPO Pipeline (self-chaining)"
+echo "  Date:  $(date)"
+echo "  Train: $([ $TRAIN -eq 1 ] && echo 'YES' || echo 'SKIP')"
+echo "  Eval:  $([ $EVAL -eq 1 ] && echo 'YES' || echo 'SKIP')"
+echo "  Models: ${#MODELS[@]}"
+echo "  Total jobs: $TOTAL"
+echo "============================================"
+echo ""
+echo "Catena:"
+cat -n "$CHAIN_FILE"
+echo ""
+
+# ── Avvia il watcher in background ────────────────────────────────────────────
+# Il watcher controlla ogni 60s se la coda è vuota e sottomette il prossimo job.
+# Usa tmux/screen se disponibile, altrimenti nohup.
+mkdir -p logs
+
+if command -v tmux &>/dev/null; then
+    tmux kill-session -t grpo-chain 2>/dev/null || true
+    tmux new-session -d -s grpo-chain "bash cluster/chain_next.sh 2>&1 | tee -a logs/chain_watcher.log"
+    SESSION_TYPE="tmux"
+elif command -v screen &>/dev/null; then
+    screen -S grpo-chain -X quit 2>/dev/null || true
+    screen -dmS grpo-chain bash -c "bash cluster/chain_next.sh 2>&1 | tee -a logs/chain_watcher.log"
+    SESSION_TYPE="screen"
+else
+    nohup bash cluster/chain_next.sh >> logs/chain_watcher.log 2>&1 &
+    SESSION_TYPE="nohup (PID: $!)"
+fi
+
+echo ""
+echo "============================================"
+echo "  Pipeline avviata!"
+echo "  Watcher: $SESSION_TYPE"
+echo "  Log: logs/chain_watcher.log"
+echo "  Catena: .job_chain"
+echo ""
+echo "  Per monitorare:"
+if [ "$SESSION_TYPE" = "tmux" ]; then
+    echo "    tmux attach -t grpo-chain    # vedi watcher (Ctrl+B D per staccarti)"
+elif [ "$SESSION_TYPE" = "screen" ]; then
+    echo "    screen -r grpo-chain         # vedi watcher (Ctrl+A D per staccarti)"
+fi
+echo "    tail -f logs/chain_watcher.log"
+echo "    myjobs"
+echo ""
+echo "  Per interrompere:"
+if [ "$SESSION_TYPE" = "tmux" ]; then
+    echo "    tmux kill-session -t grpo-chain"
+elif [ "$SESSION_TYPE" = "screen" ]; then
+    echo "    screen -S grpo-chain -X quit"
+else
+    echo "    kill $!"
+fi
 echo "============================================"
