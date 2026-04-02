@@ -165,7 +165,7 @@ run-eval() {
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts train run-eval claudio unload-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts train run-eval claudio unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -191,17 +191,41 @@ claudio() {
     echo "                     — lancia evaluation (default: grpo)"
     echo ""
     echo "   claudio           — mostra questo messaggio"
-    echo "   unload-aliases    — rimuovi tutti i comandi custom"
+    echo "   unload-aliases    — rimuovi alias (sessione corrente)"
+    echo "   install-aliases   — aggiungi alias al .bashrc (permanente)"
+    echo "   uninstall-aliases — rimuovi alias dal .bashrc (permanente)"
 }
 
-# Rimuovi tutti gli alias e funzioni custom
+# Rimuovi tutti gli alias e funzioni custom (solo sessione corrente)
 unload-aliases() {
     for cmd in $_GRPO_ALIASES; do
         unalias "$cmd" 2>/dev/null
         unset -f "$cmd" 2>/dev/null
     done
     unset _GRPO_ALIASES PROJ_DIR
-    echo "✅ Alias GRPO rimossi."
+    echo "✅ Alias GRPO rimossi (sessione corrente)."
+}
+
+_ALIASES_SOURCE_LINE="source ~/GRPO-strict-generation/cluster/aliases.sh"
+
+# Aggiungi alias al .bashrc (caricati ad ogni login)
+install-aliases() {
+    if grep -qF "$_ALIASES_SOURCE_LINE" ~/.bashrc 2>/dev/null; then
+        echo "⚠️  Alias già presenti in ~/.bashrc"
+    else
+        echo "$_ALIASES_SOURCE_LINE" >> ~/.bashrc
+        echo "✅ Alias aggiunti a ~/.bashrc (attivi dal prossimo login)"
+    fi
+}
+
+# Rimuovi alias dal .bashrc (non più caricati al login)
+uninstall-aliases() {
+    if grep -qF "$_ALIASES_SOURCE_LINE" ~/.bashrc 2>/dev/null; then
+        sed -i "\|$_ALIASES_SOURCE_LINE|d" ~/.bashrc
+        echo "✅ Alias rimossi da ~/.bashrc"
+    else
+        echo "⚠️  Alias non presenti in ~/.bashrc"
+    fi
 }
 
 echo "✅ Alias GRPO caricati. Digita 'claudio' per la lista comandi."
