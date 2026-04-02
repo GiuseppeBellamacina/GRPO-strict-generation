@@ -61,10 +61,12 @@ def _parse_kv_line(line: str) -> dict | None:
     return entry if "step" in entry else None
 
 
-def _format_val(val: object) -> str:
+def _format_val(key: str, val: object) -> str:
     if val is None:
         return "-"
     if isinstance(val, float):
+        if key == "step":
+            return str(int(val))
         if abs(val) < 0.001 and val != 0:
             return f"{val:.2e}"
         return f"{val:.4f}"
@@ -123,7 +125,7 @@ def main() -> None:
                 print(f" {sep}", flush=True)
                 header_printed = True
 
-            vals = [_format_val(entry.get(c)) for c in active_cols]
+            vals = [_format_val(c, entry.get(c)) for c in active_cols]
             # Update widths if needed
             for i, v in enumerate(vals):
                 if len(v) > widths[i]:
