@@ -1,9 +1,11 @@
-"""Display training log from trainer_state.json as a formatted table.
+"""Display training log from trainer_state.json as a formatted table or plot.
 
 Usage:
     python -m src.utils.show_training_log experiments/checkpoints/grpo/stage_1_format_basics/checkpoint-720
     python -m src.utils.show_training_log experiments/checkpoints/grpo/stage_1_format_basics/checkpoint-720 --cols step,loss,reward,learning_rate
     python -m src.utils.show_training_log experiments/checkpoints/grpo/ --last
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/ --plot          # genera grafici PNG
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/ --plot --deg 5  # grado regressione
 """
 
 from __future__ import annotations
@@ -157,9 +159,127 @@ def show_log(
     )
 
 
+_PLOT_METRICS = [
+    ("reward", "Mean Reward"),
+    ("loss", "Loss"),
+    ("rewards/format_reward/mean", "Format Reward"),
+    ("rewards/validity_reward/mean", "Validity Reward"),
+    ("rewards/schema_reward/mean", "Schema Reward"),
+    ("rewards/truncation_reward/mean", "Truncation Reward"),
+    ("completion_length", "Completion Length"),
+]
+
+
+def plot_training_curves(
+    path: str,
+    degree: int = 4,
+    output_dir: str | None = None,
+) -> None:
+    """Generate training curve plots with polynomial regression overlay."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import seaborn as sns
+
+    ts_path = _find_trainer_state(path)
+    if ts_path is None:
+        print(f"No trainer_state.json found in {path}")
+        return
+
+    data = json.loads(ts_path.read_text(encoding="utf-8"))
+    log_history = data.get("log_history", [])
+    train_logs = [
+        e for e in log_history if "loss" in e or "reward" in e
+    ]
+    if not train_logs:
+        print("No training log entries found.")
+        return
+
+    if output_dir is None:
+        output_dir = str(ts_path.parent.parent / "figures")
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    sns.set_theme(style="whitegrid")
+
+    # Determine which metrics are available
+    available_metrics = [
+        (key, label)
+        for key, label in _PLOT_METRICS
+        if any(key in e for e in train_logs)
+    ]
+
+    if not available_metrics:
+        print("No plottable metrics found.")
+        return
+
+    # Multi-panel figure: rewards on top row, others on bottom
+    n_metrics = len(available_metrics)
+    n_cols = min(3, n_metrics)
+    n_rows = (n_metrics + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(5 * n_cols, 4 * n_rows),
+        squeeze=False,
+    )
+
+    for idx, (key, label) in enumerate(available_metrics):
+        ax = axes[idx // n_cols][idx % n_cols]
+        steps = [e["step"] for e in train_logs if key in e]
+        values = [e[key] for e in train_logs if key in e]
+
+        if not steps:
+            ax.set_visible(False)
+            continue
+
+        x = np.array(steps, dtype=float)
+        y = np.array(values, dtype=float)
+
+        # Raw data (faded)
+        ax.scatter(x, y, alpha=0.15, s=8, color="#1f77b4", zorder=1)
+
+        # Polynomial regression (smooth trend)
+        if len(x) > degree + 1:
+            coeffs = np.polyfit(x, y, degree)
+            x_smooth = np.linspace(x.min(), x.max(), 300)
+            y_smooth = np.polyval(coeffs, x_smooth)
+            ax.plot(
+                x_smooth,
+                y_smooth,
+                color="#d62728",
+                linewidth=2,
+                zorder=2,
+                label=f"poly deg={degree}",
+            )
+            ax.legend(fontsize=7)
+
+        ax.set_xlabel("Step")
+        ax.set_ylabel(label)
+        ax.set_title(label)
+
+    # Hide empty axes
+    for idx in range(n_metrics, n_rows * n_cols):
+        axes[idx // n_cols][idx % n_cols].set_visible(False)
+
+    model_name = ts_path.parent.parent.name
+    fig.suptitle(
+        f"Training Curves — {model_name}",
+        fontsize=14,
+        fontweight="bold",
+    )
+    fig.tight_layout()
+    fig_path = out_path / "training_curves.png"
+    plt.savefig(fig_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {fig_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Show training log as table"
+        description="Show training log as table or plot"
     )
     parser.add_argument(
         "path", help="Path to checkpoint dir or output dir"
@@ -181,6 +301,23 @@ def main() -> None:
         action="store_true",
         help="List all available columns",
     )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Generate training curve plots with polynomial regression",
+    )
+    parser.add_argument(
+        "--deg",
+        type=int,
+        default=4,
+        help="Polynomial regression degree (default: 4)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory for plots",
+    )
     args = parser.parse_args()
 
     if args.all_cols:
@@ -193,6 +330,12 @@ def main() -> None:
             print("Available columns:")
             for c in sorted(cols):
                 print(f"  {c}")
+        return
+
+    if args.plot:
+        plot_training_curves(
+            args.path, degree=args.deg, output_dir=args.output_dir
+        )
         return
 
     columns = args.cols.split(",") if args.cols else None

@@ -2,22 +2,22 @@
 # ============================================================================
 # Lancia training + evaluation per più modelli in catena.
 #
-# La QoS permette un solo job alla volta, quindi un watcher su screen
+# La QoS permette un solo job alla volta, quindi un watcher in background
 # controlla ogni 60s se la coda è vuota e sottomette il prossimo job.
 #
 # Uso:
-#   bash cluster/run_all.sh               # lancia tutti i modelli
-#   bash cluster/run_all.sh --eval-only   # solo evaluation (skip training)
-#   bash cluster/run_all.sh --train-only  # solo training (skip eval)
+#   bash cluster/run_all.sh                  # lancia tutti i modelli
+#   bash cluster/run_all.sh --eval-only      # solo evaluation (skip training)
+#   bash cluster/run_all.sh --train-only     # solo training (skip eval)
 #
 # Monitorare:
-#   tmux attach -t grpo-chain             # vedi il watcher live (Ctrl+B D per staccarti)
-#   tail -f logs/chain_watcher.log        # log del watcher
-#   myjobs                                # job attivo su SLURM
+#   tail -f logs/chain_watcher.log           # log del watcher
+#   ps aux | grep chain_next | grep -v grep  # vedi se il watcher è attivo
+#   myjobs                                   # job attivo su SLURM
 #
 # Interrompere:
-#   tmux kill-session -t grpo-chain       # uccidi il watcher (il job in corso continua)
-#   killalljobs                           # cancella anche il job SLURM attivo
+#   kill $(cat .chain_pid)                   # uccidi il watcher
+#   killalljobs                              # cancella anche il job SLURM attivo
 #
 # Il watcher si chiude da solo quando la catena è completata.
 #
@@ -85,46 +85,33 @@ echo "Catena:"
 cat -n "$CHAIN_FILE"
 echo ""
 
-# ── Avvia il watcher in background ────────────────────────────────────────────
+# ── Avvia il watcher in background (nohup) ────────────────────────────────────
 # Il watcher controlla ogni 60s se la coda è vuota e sottomette il prossimo job.
-# Usa tmux/screen se disponibile, altrimenti nohup.
 mkdir -p logs
 
-if command -v tmux &>/dev/null; then
-    tmux kill-session -t grpo-chain 2>/dev/null || true
-    tmux new-session -d -s grpo-chain "bash cluster/chain_next.sh 2>&1 | tee -a logs/chain_watcher.log"
-    SESSION_TYPE="tmux"
-elif command -v screen &>/dev/null; then
-    screen -S grpo-chain -X quit 2>/dev/null || true
-    screen -dmS grpo-chain bash -c "bash cluster/chain_next.sh 2>&1 | tee -a logs/chain_watcher.log"
-    SESSION_TYPE="screen"
-else
-    nohup bash cluster/chain_next.sh >> logs/chain_watcher.log 2>&1 &
-    SESSION_TYPE="nohup (PID: $!)"
+# Uccidi eventuale watcher precedente
+if [ -f .chain_pid ]; then
+    OLD_PID=$(cat .chain_pid)
+    kill "$OLD_PID" 2>/dev/null && echo "Watcher precedente (PID $OLD_PID) terminato."
+    rm -f .chain_pid
 fi
+
+nohup bash cluster/chain_next.sh >> logs/chain_watcher.log 2>&1 &
+WATCHER_PID=$!
+echo "$WATCHER_PID" > .chain_pid
 
 echo ""
 echo "============================================"
 echo "  Pipeline avviata!"
-echo "  Watcher: $SESSION_TYPE"
+echo "  Watcher PID: $WATCHER_PID"
 echo "  Log: logs/chain_watcher.log"
 echo "  Catena: .job_chain"
 echo ""
 echo "  Per monitorare:"
-if [ "$SESSION_TYPE" = "tmux" ]; then
-    echo "    tmux attach -t grpo-chain    # vedi watcher (Ctrl+B D per staccarti)"
-elif [ "$SESSION_TYPE" = "screen" ]; then
-    echo "    screen -r grpo-chain         # vedi watcher (Ctrl+A D per staccarti)"
-fi
 echo "    tail -f logs/chain_watcher.log"
 echo "    myjobs"
 echo ""
 echo "  Per interrompere:"
-if [ "$SESSION_TYPE" = "tmux" ]; then
-    echo "    tmux kill-session -t grpo-chain"
-elif [ "$SESSION_TYPE" = "screen" ]; then
-    echo "    screen -S grpo-chain -X quit"
-else
-    echo "    kill $!"
-fi
+echo "    kill \$(cat .chain_pid)   # uccidi il watcher"
+echo "    killalljobs              # cancella il job SLURM attivo"
 echo "============================================"

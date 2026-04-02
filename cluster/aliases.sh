@@ -146,6 +146,11 @@ trainlog-table() {
     cd "$PROJ_DIR" && python3 -m src.utils.show_training_log "${1:-experiments/checkpoints/grpo}" "${@:2}"
 }
 
+# Genera grafici training con regressione polinomiale (uso: trainlog-plot [PATH] [--deg N])
+trainlog-plot() {
+    cd "$PROJ_DIR" && python3 -m src.utils.show_training_log "${1:-experiments/checkpoints/grpo}" --plot "${@:2}"
+}
+
 # Segui training live come tabella (uso: trainlog-live <JOB_ID>)
 trainlog-live() {
     if [ -z "$1" ]; then
@@ -214,7 +219,7 @@ run-all() {
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-live train run-eval run-all claudio unload-aliases install-aliases uninstall-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all claudio unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -235,6 +240,8 @@ claudio() {
     echo "   ckpts             — mostra checkpoint"
     echo "   trainlog-table [PATH] [--tail N]"
     echo "                     — tabella metriche training"
+    echo "   trainlog-plot [PATH] [--deg N]"
+    echo "                     — grafici training con regressione polinomiale"
     echo "   trainlog-live <ID> — training live come tabella"
     echo ""
     echo "   train --config PATH [extra args...]"

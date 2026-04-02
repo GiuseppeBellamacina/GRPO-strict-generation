@@ -6,10 +6,9 @@
 # se la coda è vuota e sottomette il prossimo job.
 #
 # Uso:
-#   nohup bash cluster/chain_next.sh &     # lancia in background
-#   bash cluster/chain_next.sh             # lancia in foreground
+#   nohup bash cluster/chain_next.sh >> logs/chain_watcher.log 2>&1 &
 #
-# Per interrompere: kill %1, oppure cancella .job_chain
+# Per interrompere: kill $(cat .chain_pid), oppure cancella .job_chain
 # ============================================================================
 
 PROJ_DIR="$HOME/GRPO-strict-generation"
@@ -25,7 +24,7 @@ while true; do
     # Se non c'è più il file catena, abbiamo finito
     if [ ! -f "$CHAIN_FILE" ] || [ ! -s "$CHAIN_FILE" ]; then
         echo "[chain] ✅ Pipeline completata! — $(date)"
-        rm -f "$CHAIN_FILE"
+        rm -f "$CHAIN_FILE" "$PROJ_DIR/.chain_pid"
         exit 0
     fi
 
