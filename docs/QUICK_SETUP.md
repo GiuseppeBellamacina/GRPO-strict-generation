@@ -114,7 +114,7 @@ sbatch cluster/train.sh experiments/configs/grpo_tinyllama.yaml
 
 ---
 
-## 7. Monitora il job
+## 7. Monitora la pipeline
 
 ```bash
 # Dashboard live (compatta)
