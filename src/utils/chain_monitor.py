@@ -544,29 +544,13 @@ def _format_status(job: JobInfo) -> str:
     slurm = f"{_DIM}[{job.slurm_id}]{_RST}" if job.slurm_id else ""
 
     detail = ""
-    time_info = ""
-    if job.state in ("RUNNING", "STARTING") and job.elapsed:
-        time_info = f" {_DIM}⏱ {job.elapsed}{_RST}"
-        eta = _estimate_eta(job)
-        if eta:
-            time_info += f" {_DIM}(~{eta} left){_RST}"
-
     if job.state == "RUNNING" and job.job_type == "train":
         if job.stage > 0:
-            pct = (
-                int(job.step / job.stage_total * 100)
-                if job.stage_total
-                else 0
-            )
-            bar_w = 12
-            filled = int(bar_w * pct / 100)
-            bar = f"{_CYAN}{'█' * filled}{_GRAY}{'░' * (bar_w - filled)}{_RST}"
-            detail = f" stage {_WHITE}{_BOLD}{job.stage}/3{_RST} {bar} {_WHITE}{job.step}{_RST}/{job.stage_total} {_DIM}({pct}%){_RST}"
+            detail = f" stage {_WHITE}{_BOLD}{job.stage}/3{_RST} step {_WHITE}{job.step}{_RST}/{job.stage_total}"
         elif job.step > 0:
             detail = f" step {_WHITE}{job.step}{_RST}"
     elif job.state == "RUNNING" and job.job_type == "eval":
         if job.eval_label:
-            # Show stage or baseline label
             if job.stage > 0:
                 stage_lbl = f"stage {_WHITE}{_BOLD}{job.stage}{_RST}"
                 if job.stage_total > 0:
@@ -576,13 +560,6 @@ def _format_status(job: JobInfo) -> str:
                 detail = f" {_YELLOW}baseline{_RST}"
             else:
                 detail = f" → {_WHITE}{job.eval_label}{_RST}"
-            # Progress bar
-            if job.step > 0 and job.eval_step_total > 0:
-                pct = int(job.step / job.eval_step_total * 100)
-                bar_w = 12
-                filled = int(bar_w * pct / 100)
-                bar = f"{_MAGENTA}{'█' * filled}{_GRAY}{'░' * (bar_w - filled)}{_RST}"
-                detail += f" {bar} {_WHITE}{job.step}{_RST}/{job.eval_step_total} {_DIM}({pct}%){_RST}"
             if job.eval_pass:
                 detail += f" {_GREEN}(pass@1={job.eval_pass}){_RST}"
     elif job.state == "COMPLETED" and job.job_type == "train":
@@ -603,7 +580,9 @@ def _format_status(job: JobInfo) -> str:
     label = f"{tc}{job.job_type}{_RST}-{_BOLD}{job.tag}{_RST}"
     state_str = f"{sc}{job.state}{_RST}"
 
-    return f" {icon}  {label:<40s} {slurm:<20s} {state_str:<22s}{detail}{time_info}"
+    return (
+        f" {icon}  {label:<40s} {slurm:<20s} {state_str:<22s}{detail}"
+    )
 
 
 def _watcher_status() -> str:
@@ -663,40 +642,50 @@ def _display(jobs: list[JobInfo]) -> None:
     if running:
         j = running[0]
         tc = _TYPE_COLORS.get(j.job_type, "")
-        eta = _estimate_eta(j)
-        time_str = ""
-        if j.elapsed:
-            time_str = f" {_DIM}⏱ {j.elapsed}{_RST}"
-            if eta:
-                time_str += f" {_DIM}(~{eta} left){_RST}"
+        bar_color = _CYAN if j.job_type == "train" else _MAGENTA
+
+        # Build description line
         if j.job_type == "train" and j.stage > 0:
-            print(
-                f"  {_CYAN}▶ Active:{_RST} {tc}{j.job_type}{_RST}-{_BOLD}{j.tag}{_RST}"
-                f" — stage {_WHITE}{j.stage}/3{_RST}, step {_WHITE}{j.step}{_RST}{time_str}"
-            )
+            desc = f"stage {_WHITE}{j.stage}/3{_RST}, step {_WHITE}{j.step}{_RST}/{j.stage_total}"
         elif j.job_type == "eval" and j.eval_label:
             if j.stage > 0:
                 stg = f"stage {j.stage}"
                 if j.stage_total > 0:
                     stg += f"/{j.stage_total}"
-                elbl = stg
+                desc = f"{stg}"
             elif j.stage_name == "baseline":
-                elbl = "baseline"
+                desc = "baseline"
             else:
-                elbl = j.eval_label
-            pct_str = ""
+                desc = j.eval_label
             if j.step > 0 and j.eval_step_total > 0:
-                pct_str = (
-                    f", {_WHITE}{j.step}/{j.eval_step_total}{_RST}"
-                )
-            print(
-                f"  {_CYAN}▶ Active:{_RST} {tc}{j.job_type}{_RST}-{_BOLD}{j.tag}{_RST}"
-                f" — {_WHITE}{elbl}{_RST}{pct_str}{time_str}"
-            )
+                desc += f", batch {_WHITE}{j.step}{_RST}/{j.eval_step_total}"
         else:
-            print(
-                f"  {_CYAN}▶ Active:{_RST} {tc}{j.job_type}{_RST}-{_BOLD}{j.tag}{_RST}{time_str}"
-            )
+            desc = ""
+
+        print(
+            f"  {_CYAN}▶ Active:{_RST} {tc}{j.job_type}{_RST}-{_BOLD}{j.tag}{_RST}"
+            + (f" — {desc}" if desc else "")
+        )
+
+        # Progress bar + time on second line
+        cur = j.step
+        tot = (
+            j.stage_total
+            if j.job_type == "train"
+            else j.eval_step_total
+        )
+        if cur > 0 and tot > 0:
+            pct = int(cur / tot * 100)
+            bar_w = 20
+            filled = int(bar_w * pct / 100)
+            bar = f"{bar_color}{'█' * filled}{_GRAY}{'░' * (bar_w - filled)}{_RST}"
+            eta = _estimate_eta(j)
+            time_parts = ""
+            if j.elapsed:
+                time_parts += f" ⏱ {_DIM}{j.elapsed}{_RST}"
+            if eta:
+                time_parts += f" ⏳ {_DIM}~{eta}{_RST}"
+            print(f"  {bar} {_WHITE}{pct}%{_RST}{time_parts}")
     elif remaining > 0:
         print(
             f"  {_YELLOW}⏳ Waiting for next job... ({remaining} remaining){_RST}"
