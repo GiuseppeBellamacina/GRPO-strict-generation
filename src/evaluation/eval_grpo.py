@@ -70,38 +70,85 @@ def _evaluate_model(
     from pathlib import Path as _Path
 
     model_cfg = config["model"]
+    use_unsloth = model_cfg.get("use_unsloth", False)
 
-    if (
-        is_checkpoint
-        and (_Path(model_path) / "adapter_config.json").exists()
-    ):
-        # PEFT checkpoint — load base model + merge LoRA adapters
-        from peft import PeftModel
+    # Try Unsloth-accelerated loading (2x faster inference, ~50% less VRAM).
+    # fast_inference (vLLM) is always disabled to avoid VRAM saturation.
+    _unsloth_ok = False
+    if use_unsloth:
+        try:
+            from unsloth import FastLanguageModel
 
-        print(f"  Loading base model {model_cfg['name']}...")
-        base_config = {
-            "model": {
-                **model_cfg,
-                "fast_inference": False,
-                "use_unsloth": False,
-            }
-        }
-        model, tokenizer = load_model_and_tokenizer(base_config)
-        print(f"  Loading LoRA adapters from {model_path}...")
-        model = PeftModel.from_pretrained(model, model_path)
-        model = model.merge_and_unload()
+            _unsloth_ok = True
+        except ImportError:
+            _unsloth_ok = False
+
+    if _unsloth_ok:
+        # ── Unsloth path ─────────────────────────────────────────────────
+        quantization = model_cfg.get("quantization", "4bit")
+        base_name = model_cfg["name"]
+
+        if (
+            is_checkpoint
+            and (_Path(model_path) / "adapter_config.json").exists()
+        ):
+            # PEFT checkpoint — load base model via Unsloth, attach adapter
+            from peft import PeftModel
+
+            print(f"  Loading base model {base_name} (Unsloth)...")
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=base_name,
+                max_seq_length=model_cfg.get("max_seq_length", 2048),
+                load_in_4bit=(quantization == "4bit"),
+                dtype=None,
+            )
+            print(f"  Loading LoRA adapters from {model_path}...")
+            model = PeftModel.from_pretrained(model, model_path)
+        else:
+            # Full model or base model (baseline)
+            print(f"  Loading model from {model_path} (Unsloth)...")
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=model_path,
+                max_seq_length=model_cfg.get("max_seq_length", 2048),
+                load_in_4bit=(quantization == "4bit"),
+                dtype=None,
+            )
+
+        FastLanguageModel.for_inference(model)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "left"
     else:
-        # Full model or base model (baseline)
-        eval_config = {
-            "model": {
-                **model_cfg,
-                "name": model_path,
-                "fast_inference": False,
-                "use_unsloth": False,
+        # ── Vanilla HuggingFace path (fallback) ─────────────────────────
+        if (
+            is_checkpoint
+            and (_Path(model_path) / "adapter_config.json").exists()
+        ):
+            from peft import PeftModel
+
+            print(f"  Loading base model {model_cfg['name']}...")
+            base_config = {
+                "model": {
+                    **model_cfg,
+                    "fast_inference": False,
+                    "use_unsloth": False,
+                }
             }
-        }
-        print(f"  Loading model from {model_path}...")
-        model, tokenizer = load_model_and_tokenizer(eval_config)
+            model, tokenizer = load_model_and_tokenizer(base_config)
+            print(f"  Loading LoRA adapters from {model_path}...")
+            model = PeftModel.from_pretrained(model, model_path)
+            model = model.merge_and_unload()
+        else:
+            eval_config = {
+                "model": {
+                    **model_cfg,
+                    "name": model_path,
+                    "fast_inference": False,
+                    "use_unsloth": False,
+                }
+            }
+            print(f"  Loading model from {model_path}...")
+            model, tokenizer = load_model_and_tokenizer(eval_config)
 
     print(f"  Generating completions for {len(prompts)} prompts...")
     completions_per_prompt = generate_completions(

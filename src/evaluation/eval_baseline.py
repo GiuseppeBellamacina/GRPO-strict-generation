@@ -148,12 +148,21 @@ def main() -> None:
 
     print(f"Loading model: {model_cfg['name']}")
 
-    # Support both Unsloth and standard HuggingFace loading
+    # Support both Unsloth and standard HuggingFace loading.
+    # fast_inference (vLLM) is disabled to avoid VRAM saturation;
+    # Unsloth's for_inference() gives 2x speedup without extra VRAM.
     use_unsloth = model_cfg.get("use_unsloth", False)
     if use_unsloth:
-        # Load via Unsloth (without LoRA — baseline has no adapters)
-        base_config: dict[str, Any] = {"model": model_cfg}
+        base_config: dict[str, Any] = {
+            "model": {**model_cfg, "fast_inference": False}
+        }
         model, tokenizer = load_model_and_tokenizer(base_config)
+        try:
+            from unsloth import FastLanguageModel
+
+            FastLanguageModel.for_inference(model)
+        except ImportError:
+            pass
     else:
         model = load_model(
             model_name=model_cfg["name"],
