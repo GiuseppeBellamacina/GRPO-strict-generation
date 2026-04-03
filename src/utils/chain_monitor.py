@@ -873,9 +873,28 @@ def _display(jobs: list[JobInfo], show_table: bool = True) -> None:
                 time_parts += f" {_DIM}(job ~{total_eta}){_RST}"
             print(f"  {bar} {_WHITE}{pct}%{_RST}{time_parts}")
     elif remaining > 0:
-        print(
-            f"  {_YELLOW}⏳ Waiting for next job... ({remaining} remaining){_RST}"
-        )
+        # Check if watcher is alive
+        watcher_alive = False
+        if CHAIN_PID_FILE.exists():
+            try:
+                pid = CHAIN_PID_FILE.read_text().strip()
+                result = _run(f"ps -p {pid} -o pid= 2>/dev/null")
+                watcher_alive = bool(result)
+            except Exception:
+                pass
+        if watcher_alive:
+            print(
+                f"  {_YELLOW}⏳ Waiting for next job... ({remaining} remaining){_RST}"
+            )
+        else:
+            print(
+                f"  {_RED}⚠ Pipeline stalled{_RST} — {remaining} jobs pending but watcher is dead"
+            )
+            print(
+                f"  {_DIM}Restart: bash cluster/run_all.sh   |   Clean: rm .job_chain{_RST}"
+            )
+    elif not jobs:
+        print(f"  {_DIM}No jobs found.{_RST}")
     else:
         print(f"  {_GREEN}{_BOLD}✓ Pipeline finished!{_RST}")
 
