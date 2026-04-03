@@ -710,8 +710,10 @@ def _display(jobs: list[JobInfo], show_table: bool = True) -> None:
 
             print(_format_status(job))
 
+        print()
+        print(f"{_DIM}{'─' * 65}{_RST}")
+
     print()
-    print(f"{_DIM}{'─' * 65}{_RST}")
     remaining = sum(1 for j in jobs if j.state == "PENDING")
     running = [j for j in jobs if j.state in ("RUNNING", "STARTING")]
     if running:
