@@ -544,24 +544,8 @@ def _format_status(job: JobInfo) -> str:
     slurm = f"{_DIM}[{job.slurm_id}]{_RST}" if job.slurm_id else ""
 
     detail = ""
-    if job.state == "RUNNING" and job.job_type == "train":
-        if job.stage > 0:
-            detail = f" stage {_WHITE}{_BOLD}{job.stage}/3{_RST} step {_WHITE}{job.step}{_RST}/{job.stage_total}"
-        elif job.step > 0:
-            detail = f" step {_WHITE}{job.step}{_RST}"
-    elif job.state == "RUNNING" and job.job_type == "eval":
-        if job.eval_label:
-            if job.stage > 0:
-                stage_lbl = f"stage {_WHITE}{_BOLD}{job.stage}{_RST}"
-                if job.stage_total > 0:
-                    stage_lbl += f"/{job.stage_total}"
-                detail = f" {stage_lbl}"
-            elif job.stage_name == "baseline":
-                detail = f" {_YELLOW}baseline{_RST}"
-            else:
-                detail = f" → {_WHITE}{job.eval_label}{_RST}"
-            if job.eval_pass:
-                detail += f" {_GREEN}(pass@1={job.eval_pass}){_RST}"
+    if job.state in ("RUNNING", "STARTING"):
+        pass  # no detail in table row — shown in footer
     elif job.state == "COMPLETED" and job.job_type == "train":
         if job.stage_name == "COMPLETE":
             detail = f" {_GREEN}✓ all 3 stages{_RST}"
@@ -682,7 +666,7 @@ def _display(jobs: list[JobInfo]) -> None:
             eta = _estimate_eta(j)
             time_parts = ""
             if j.elapsed:
-                time_parts += f" ⏱ {_DIM}{j.elapsed}{_RST}"
+                time_parts += f" ⏱  {_DIM}{j.elapsed}{_RST}"
             if eta:
                 time_parts += f" ⏳ {_DIM}~{eta}{_RST}"
             print(f"  {bar} {_WHITE}{pct}%{_RST}{time_parts}")
