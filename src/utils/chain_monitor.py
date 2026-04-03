@@ -511,6 +511,71 @@ def _estimate_eta(job: JobInfo) -> str:
     return ""
 
 
+def _estimate_total_eta(job: JobInfo) -> str:
+    """Estimate total remaining time including future stages.
+
+    For train: uses step speed x remaining steps in all stages.
+    For eval: uses batch speed x remaining batches in all stages.
+    """
+    # Use tqdm timing if available, fallback to squeue elapsed
+    speed_elapsed_s = _parse_elapsed_seconds(job.tqdm_elapsed)
+    speed_steps = job.step
+    if not speed_elapsed_s or speed_elapsed_s < 10:
+        # Fallback: use squeue elapsed (less accurate but works for train)
+        speed_elapsed_s = _parse_elapsed_seconds(job.elapsed)
+        if not speed_elapsed_s or speed_elapsed_s < 30:
+            return ""
+
+    if job.job_type == "train" and speed_steps > 0 and job.stage > 0:
+        secs_per_step = speed_elapsed_s / speed_steps
+        # Remaining in current stage
+        remaining_current = max(0, job.stage_total - job.step)
+        # Future stages: read from log
+        future_steps = 0
+        if job.slurm_id:
+            log_file = _find_log_file(job.job_type, job.slurm_id)
+            if log_file:
+                stage_lines = _grep_lines(
+                    log_file, r"\[stage [0-9]+\] steps="
+                )
+                all_stages: dict[int, int] = {}
+                for line in stage_lines:
+                    m = _STAGE_START.search(line)
+                    if m:
+                        all_stages[int(m.group(1))] = int(m.group(2))
+                for s_num, s_steps in all_stages.items():
+                    if s_num > job.stage:
+                        future_steps += s_steps
+        # If we couldn't read future stages, estimate ~same as current
+        if future_steps == 0 and job.stage < 3:
+            future_steps = job.stage_total * (3 - job.stage)
+        total_remaining = remaining_current + future_steps
+        if total_remaining <= 0:
+            return ""
+        eta = int(secs_per_step * total_remaining)
+        return _format_duration(eta)
+
+    elif (
+        job.job_type == "eval"
+        and speed_steps > 0
+        and job.stage > 0
+        and job.eval_step_total > 0
+    ):
+        secs_per_batch = speed_elapsed_s / speed_steps
+        remaining_current = max(0, job.eval_step_total - job.step)
+        # Each stage has same number of batches (same dataset size)
+        total_stages = job.stage_total if job.stage_total > 0 else 3
+        remaining_stages = total_stages - job.stage
+        future_batches = remaining_stages * job.eval_step_total
+        total_remaining = remaining_current + future_batches
+        if total_remaining <= 0:
+            return ""
+        eta = int(secs_per_batch * total_remaining)
+        return _format_duration(eta)
+
+    return ""
+
+
 # ── ANSI color helpers ────────────────────────────────────────────────────────
 _RST = "\033[0m"
 _BOLD = "\033[1m"
@@ -679,11 +744,14 @@ def _display(jobs: list[JobInfo]) -> None:
             filled = int(bar_w * pct / 100)
             bar = f"{bar_color}{'█' * filled}{_GRAY}{'░' * (bar_w - filled)}{_RST}"
             eta = _estimate_eta(j)
+            total_eta = _estimate_total_eta(j)
             time_parts = ""
             if j.elapsed:
                 time_parts += f" ⏱  {_DIM}{j.elapsed}{_RST}"
             if eta:
                 time_parts += f" ⏳ {_DIM}~{eta}{_RST}"
+            if total_eta and total_eta != eta:
+                time_parts += f" {_DIM}(job ~{total_eta}){_RST}"
             print(f"  {bar} {_WHITE}{pct}%{_RST}{time_parts}")
     elif remaining > 0:
         print(
