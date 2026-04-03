@@ -37,9 +37,14 @@ CHAIN_LOG = LOGS_DIR / "chain_watcher.log"
 _KV_STEP = re.compile(r"^\s+step=(\d+)\s+loss=")
 _STAGE_START = re.compile(r"\[stage (\d+)\] steps=(\d+)")
 _STAGE_DONE = re.compile(r"\[stage (\d+)\] (\S+) completed")
-_CURRICULUM_DONE = re.compile(r"CURRICULUM TRAINING COMPLETE")
 # tqdm progress bar: " 47%|████▋     | 420/900 [29:23<25:49"
-_TQDM_PROGRESS = re.compile(r"\|\s*(\d+)/(\d+)\s*\[")
+# HF Trainer's bar starts at line beginning (optional whitespace + percentage).
+# This avoids matching unrelated tqdm bars like "Saving dataset: 100%|...|1500/1500["
+_TQDM_PROGRESS = re.compile(
+    r"^\s*\d+%\|.*\|\s*(\d+)/(\d+)\s*\[", re.MULTILINE
+)
+# Eval generation bar: "Generating:  45%|████▍| 17/38 ["
+_TQDM_GENERATING = re.compile(r"Generating.*\|\s*(\d+)/(\d+)\s*\[")
 # tqdm time info: "[04:25<37:02, 33.17s/it]" or "[1:23:45<2:03:04"
 _TQDM_TIME = re.compile(r"\[([\d:]+)<([\d:]+)")
 _EVAL_CHECKPOINT = re.compile(r"Evaluating: (.+)")
@@ -292,7 +297,7 @@ def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
 
     # Get tqdm generation progress from the last lines
     for line in reversed(tail):
-        m = _TQDM_PROGRESS.search(line)
+        m = _TQDM_GENERATING.search(line)
         if m:
             job.step = int(m.group(1))
             job.eval_step_total = int(m.group(2))
