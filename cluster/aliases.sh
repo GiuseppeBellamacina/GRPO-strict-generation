@@ -249,15 +249,20 @@ watcher-kill() {
     fi
 }
 
-# Pulizia selettiva di un modello (uso: clean-model <TAG> [--force] [--all])
+# Pulizia selettiva di un modello (uso: clean-model <TAG> [--all])
 clean-model() {
     cd "$PROJ_DIR" && bash cluster/clean_model.sh "$@"
+}
+
+# Monitor live della pipeline (uso: monitor [--poll N])
+monitor() {
+    cd "$PROJ_DIR" && python3 -u -m src.utils.chain_monitor "$@"
 }
 
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill clean-model claudio unload-aliases install-aliases uninstall-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill clean-model pipeline-monitor claudio unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -292,6 +297,8 @@ claudio() {
     echo "   watcher-kill      — uccidi il watcher"
     echo "   clean-model <TAG> [--grpo|--baseline|--sft|--all]"
     echo "                     — pulisci checkpoints/logs di un modello"
+    echo "   monitor [--poll N]"
+    echo "                     — monitor live della pipeline (refresh ogni Ns)"
     echo ""
     echo "   claudio           — mostra questo messaggio"
     echo "   unload-aliases    — rimuovi alias (sessione corrente)"
