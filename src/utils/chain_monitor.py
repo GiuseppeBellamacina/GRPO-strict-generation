@@ -253,13 +253,23 @@ def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
             if sm:
                 job.stage = int(sm.group(1))
                 eval_stages_seen += 1
+                is_baseline = False  # back to stage eval
             elif "baseline" in job.eval_label.lower():
                 is_baseline = True
+                job.stage = 0
+
+        # Detect "Running baseline evaluation..." (not an "Evaluating:" line)
+        if "baseline evaluation" in line.lower():
+            is_baseline = True
+            job.stage = 0
 
         m = _EVAL_PASS.search(line)
         if m:
             job.eval_label = m.group(1)
             job.eval_pass = m.group(2)
+            if "baseline" in job.eval_label.lower():
+                is_baseline = True
+                job.stage = 0
 
         if _EVAL_COMPLETE.search(line):
             job.eval_label = "COMPLETE"
