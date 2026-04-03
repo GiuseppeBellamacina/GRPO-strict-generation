@@ -27,13 +27,13 @@ echo "Pulizia workspace: $PWD"
 echo ""
 
 # ── Svuota data/ (dataset generato, verrà ricreato da train.sh) ───────────
-echo "[1/6] data/ (dataset sintetico)"
+echo "[1/9] data/ (dataset sintetico)"
 if [ -d "data" ]; then
     $CMD data/*
 fi
 
 # ── Svuota experiments/ tranne configs/ ───────────────────────────────────
-echo "[2/6] experiments/ (checkpoints, logs — preserva configs/)"
+echo "[2/9] experiments/ (checkpoints, logs — preserva configs/)"
 if [ -d "experiments/checkpoints" ]; then
     $CMD experiments/checkpoints/*
 fi
@@ -42,38 +42,43 @@ if [ -d "experiments/logs" ]; then
 fi
 
 # ── Svuota logs/ (SLURM log) ─────────────────────────────────────────────
-echo "[3/6] logs/ (SLURM output)"
+echo "[3/9] logs/ (SLURM output)"
 if [ -d "logs" ]; then
     $CMD logs/*
 fi
 
 # ── Cache Python ─────────────────────────────────────────────────────────
-echo "[4/8] __pycache__/"
+echo "[4/9] __pycache__/"
 find . -type d -name "__pycache__" -print -exec $CMD {} + 2>/dev/null || true
 
 # ── Artifact LoRA/Unsloth del GRPOTrainer ────────────────────────────────
-echo "[5/8] grpo_trainer_lora_model_*/"
+echo "[5/9] grpo_trainer_lora_model_*/"
 for d in grpo_trainer_lora_model_*; do
     [ -d "$d" ] && $CMD "$d"
 done
 
 # ── wandb offline runs ──────────────────────────────────────────────────
-echo "[6/8] wandb/ (cartella legacy)"
+echo "[6/9] wandb/ (cartella legacy)"
 if [ -d "wandb" ]; then
     $CMD wandb
 fi
 
 # ── Unsloth compiled cache ──────────────────────────────────────────────
-echo "[7/8] unsloth_compiled_cache/"
+echo "[7/9] unsloth_compiled_cache/"
 if [ -d "unsloth_compiled_cache" ]; then
     $CMD unsloth_compiled_cache
 fi
 
 # ── Notebooks (non servono sul cluster) ──────────────────────────────────
-echo "[8/8] notebooks/"
+echo "[8/9] notebooks/"
 if [ -d "notebooks" ]; then
     $CMD notebooks
 fi
+
+# ── File watcher / pipeline ──────────────────────────────────────────────
+echo "[9/9] .job_chain, .chain_pid"
+[ -f ".job_chain" ] && $CMD .job_chain
+[ -f ".chain_pid" ] && $CMD .chain_pid
 
 echo ""
 if [ "$FORCE" = "0" ]; then

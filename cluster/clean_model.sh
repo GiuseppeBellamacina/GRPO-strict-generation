@@ -3,11 +3,13 @@
 # Pulizia selettiva — rimuove checkpoints e logs di un modello specifico.
 #
 # Uso:
+#   bash cluster/clean_model.sh                           # dry-run (mostra cosa c'è)
 #   bash cluster/clean_model.sh <MODEL_TAG>              # cancella GRPO (default)
 #   bash cluster/clean_model.sh <MODEL_TAG> --all         # cancella tutto
 #   bash cluster/clean_model.sh <MODEL_TAG> --baseline    # cancella solo baseline
 #
 # MODEL_TAG è il nome usato nei path (es. smollm2-135m, tinyllama-11b, ...).
+# Senza MODEL_TAG: mostra un riepilogo di cosa esiste per ogni modello (dry-run).
 #
 # Opzioni:
 #   --grpo       Solo dati GRPO (default se nessun flag specifico)
@@ -16,6 +18,7 @@
 #   --all        GRPO + baseline + SFT
 #
 # Esempi:
+#   bash cluster/clean_model.sh                            # dry-run
 #   bash cluster/clean_model.sh tinyllama-11b              # cancella GRPO
 #   bash cluster/clean_model.sh tinyllama-11b --all         # cancella tutto
 #   bash cluster/clean_model.sh tinyllama-11b --baseline    # cancella solo baseline
@@ -77,16 +80,38 @@ if [ $DO_GRPO -eq 0 ] && [ $DO_BASELINE -eq 0 ] && [ $DO_SFT -eq 0 ]; then
     DO_GRPO=1
 fi
 
-# ── Validazione modello ──────────────────────────────────────────────────────
+# ── Dry-run (nessun modello specificato) ──────────────────────────────────────
 if [ -z "$MODEL" ]; then
-    echo "❌ Specifica il modello da pulire."
+    echo "=== DRY RUN — mostra cosa esiste per ogni modello ==="
     echo ""
-    echo "Uso: bash cluster/clean_model.sh <MODEL_TAG> [--grpo|--baseline|--sft|--all]"
+    for m in "${VALID_MODELS[@]}"; do
+        DIRS_FOUND=()
+        # GRPO
+        [ -d "experiments/checkpoints/grpo/$m" ] && DIRS_FOUND+=("checkpoints/grpo/$m")
+        [ -d "experiments/logs/grpo/$m" ] && DIRS_FOUND+=("logs/grpo/$m")
+        # Baseline
+        HF=$(baseline_hf_name "$m")
+        [ -n "$HF" ] && [ -d "experiments/logs/baseline/$HF" ] && DIRS_FOUND+=("logs/baseline/$HF")
+        # SFT
+        [ -d "experiments/checkpoints/sft/$m" ] && DIRS_FOUND+=("checkpoints/sft/$m")
+        [ -d "experiments/logs/sft/$m" ] && DIRS_FOUND+=("logs/sft/$m")
+
+        if [ ${#DIRS_FOUND[@]} -gt 0 ]; then
+            echo "  $m:"
+            for d in "${DIRS_FOUND[@]}"; do
+                SIZE=$(du -sh "experiments/$d" 2>/dev/null | cut -f1)
+                echo "    experiments/$d ($SIZE)"
+            done
+        else
+            echo "  $m: (niente)"
+        fi
+    done
     echo ""
-    echo "Modelli disponibili:"
-    for m in "${VALID_MODELS[@]}"; do echo "  $m"; done
-    exit 1
+    echo "Per cancellare: bash cluster/clean_model.sh <MODEL_TAG> [--grpo|--baseline|--sft|--all]"
+    exit 0
 fi
+
+# ── Validazione modello ──────────────────────────────────────────────────────
 
 FOUND=0
 for m in "${VALID_MODELS[@]}"; do
