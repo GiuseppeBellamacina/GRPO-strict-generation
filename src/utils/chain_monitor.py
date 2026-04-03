@@ -527,6 +527,9 @@ def _estimate_total_eta(job: JobInfo) -> str:
             return ""
 
     if job.job_type == "train" and speed_steps > 0 and job.stage > 0:
+        # At last stage, total == stage ETA, skip
+        if job.stage >= 3:
+            return ""
         secs_per_step = speed_elapsed_s / speed_steps
         # Remaining in current stage
         remaining_current = max(0, job.stage_total - job.step)
@@ -566,7 +569,14 @@ def _estimate_total_eta(job: JobInfo) -> str:
         # Each stage has same number of batches (same dataset size)
         total_stages = job.stage_total if job.stage_total > 0 else 3
         remaining_stages = total_stages - job.stage
-        future_batches = remaining_stages * job.eval_step_total
+        # +1 round for baseline evaluation
+        baseline_batches = job.eval_step_total
+        future_batches = (
+            remaining_stages * job.eval_step_total + baseline_batches
+        )
+        # At last stage with no future stages, only baseline remains
+        if remaining_stages <= 0 and remaining_current <= 0:
+            future_batches = baseline_batches
         total_remaining = remaining_current + future_batches
         if total_remaining <= 0:
             return ""
@@ -668,7 +678,7 @@ def _watcher_status() -> str:
         return f"{_RED}Watcher: UNKNOWN{_RST}"
 
 
-def _display(jobs: list[JobInfo]) -> None:
+def _display(jobs: list[JobInfo], show_table: bool = True) -> None:
     """Print the full pipeline status."""
     completed = sum(1 for j in jobs if j.state == "COMPLETED")
     failed = sum(1 for j in jobs if j.state == "FAILED")
@@ -688,16 +698,17 @@ def _display(jobs: list[JobInfo]) -> None:
     print(f"  {_watcher_status()}")
     print(f"  {_DIM}{time.strftime('%Y-%m-%d %H:%M:%S')}{_RST}")
     print(f"{_CYAN}{'═' * 65}{_RST}")
-    print()
 
-    current_model = ""
-    for job in jobs:
-        # Group separator by model
-        if job.tag != current_model:
-            current_model = job.tag
-            print(f"  {_BOLD}{_YELLOW}▸ {current_model}{_RST}")
+    if show_table:
+        print()
+        current_model = ""
+        for job in jobs:
+            # Group separator by model
+            if job.tag != current_model:
+                current_model = job.tag
+                print(f"  {_BOLD}{_YELLOW}▸ {current_model}{_RST}")
 
-        print(_format_status(job))
+            print(_format_status(job))
 
     print()
     print(f"{_DIM}{'─' * 65}{_RST}")
@@ -728,6 +739,7 @@ def _display(jobs: list[JobInfo]) -> None:
 
         print(
             f"  {_CYAN}▶ Active:{_RST} {tc}{j.job_type}{_RST}-{_BOLD}{j.tag}{_RST}"
+            + (f" {_DIM}[{j.slurm_id}]{_RST}" if j.slurm_id else "")
             + (f" — {desc}" if desc else "")
         )
 
@@ -803,6 +815,11 @@ def main() -> None:
         default=15,
         help="Seconds between refresh (default: 15)",
     )
+    parser.add_argument(
+        "--tab",
+        action="store_true",
+        help="Show the full job table (default: compact view)",
+    )
     args = parser.parse_args()
 
     print("GRPO Pipeline Monitor — Ctrl+C to exit")
@@ -812,7 +829,7 @@ def main() -> None:
     try:
         while True:
             jobs = _build_pipeline()
-            _display(jobs)
+            _display(jobs, show_table=args.tab)
 
             # Check if pipeline is done
             all_done = all(
