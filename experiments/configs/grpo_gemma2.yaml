@@ -1,7 +1,9 @@
 # ============================================================================
 # GRPO training config — Gemma-2-2B-it — Cluster DMI (L40S)
 #
-# Gemma 2 2B 4-bit ≈ 1.5 GB → ridotto gpu_memory e generazioni per shard 22GB
+# Gemma 2 2B 4-bit ≈ 2 GB. fast_inference (vLLM) disabilitato: la KV cache
+# pre-allocata sfora la shard SLURM da 22 GB. Unsloth resta attivo per i
+# kernel fused e il gradient checkpointing.
 #
 # Usato da:
 #   CONFIG=experiments/configs/grpo_gemma2.yaml sbatch cluster/train.sh
@@ -15,7 +17,7 @@ model:
   quantization: "4bit"
   dtype: "bfloat16"
   use_unsloth: true
-  fast_inference: true
+  fast_inference: false
   max_seq_length: 2048
   gpu_memory_utilization: 0.45
 
