@@ -2,16 +2,23 @@
 # ============================================================================
 # Setup one-tantum per il cluster DMI.
 #
-# Eseguire UNA VOLTA dentro una sessione interattiva Apptainer:
-#
-#   srun --account <QUEUE> --partition <QUEUE> --qos gpu-small \
-#        --gres=gpu:1 --gres=shard:2000 --mem=4G \
-#        --pty apptainer shell --nv /shared/sifs/latest.sif
-#
-#   # dentro il container:
+# Uso (dal login node):
 #   cd ~/GRPO-strict-generation
 #   bash cluster/setup.sh
+#
+# Lo script rilancia se stesso dentro srun + Apptainer automaticamente.
 # ============================================================================
+
+# ── 0. Auto-rilancio dentro srun + Apptainer se siamo sul login node ─────────
+if [ -z "$APPTAINER_CONTAINER" ]; then
+    echo "🚀 Login node rilevato → rilancio inside srun + Apptainer..."
+    ACCOUNT="${SLURM_ACCOUNT:-dl-course-q2}"
+    exec srun --account "$ACCOUNT" --partition "$ACCOUNT" --qos gpu-medium \
+         --gres=gpu:1 --gres=shard:2000 --mem=4G \
+         apptainer run --nv /shared/sifs/latest.sif \
+         bash "$0" "$@"
+fi
+
 set -e
 
 echo "=== Setup GRPO Strict Generation (Cluster DMI) ==="
@@ -44,15 +51,10 @@ if torch.cuda.is_available():
 else:
     print('  GPU: NESSUNA GPU rilevata')
     print('CC_MAJOR=0')
-" 2>&1) || true
+") || { echo "❌ Errore nel rilevamento GPU"; exit 1; }
 
-if echo "$GPU_INFO" | grep -q "CC_MAJOR="; then
-    echo "$GPU_INFO" | grep -v CC_MAJOR
-    CC_MAJOR=$(echo "$GPU_INFO" | grep CC_MAJOR | cut -d= -f2)
-else
-    echo "  ⚠️  torch non disponibile (login node?) → assume GPU moderna (CC >= 7)"
-    CC_MAJOR=8
-fi
+echo "$GPU_INFO" | grep -v CC_MAJOR
+CC_MAJOR=$(echo "$GPU_INFO" | grep CC_MAJOR | cut -d= -f2)
 
 # ── 2. Installa dipendenze dal pyproject.toml ─────────────────────────────────
 echo ""

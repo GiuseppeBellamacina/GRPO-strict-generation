@@ -304,11 +304,10 @@ pip-clean() {
     echo "✅ ~/.local ripulito"
 }
 
-# (Re)installa dipendenze da setup.sh (dentro Apptainer)
+# (Re)installa dipendenze da setup.sh
 pip-setup() {
-    echo "📦 Installazione dipendenze (via Apptainer)..."
-    cd "$PROJ_DIR" && apptainer run /shared/sifs/latest.sif \
-        bash cluster/setup.sh
+    echo "📦 Installazione dipendenze..."
+    cd "$PROJ_DIR" && bash cluster/setup.sh
 }
 
 # Pulisci e reinstalla da zero
