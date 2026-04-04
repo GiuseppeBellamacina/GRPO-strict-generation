@@ -119,7 +119,7 @@ function DownloadLogs {
     Write-Progress -Activity "Download" -Status "Downloading experiments/logs (includes figures)..." -PercentComplete 0
     $dest = Join-Path $LOCAL "experiments\logs"
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -rq "${REMOTE}/experiments/logs/." $dest
+    scp -r "${REMOTE}/experiments/logs/." $dest
     Write-Progress -Activity "Download" -Completed
     Write-Host "  -> saved to experiments\logs" -ForegroundColor Gray
 }
@@ -128,7 +128,7 @@ function DownloadCheckpoints {
     Write-Progress -Activity "Download" -Status "Downloading experiments/checkpoints..." -PercentComplete 0
     $dest = Join-Path $LOCAL "experiments\checkpoints"
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -rq "${REMOTE}/experiments/checkpoints/." $dest
+    scp -r "${REMOTE}/experiments/checkpoints/." $dest
     Write-Progress -Activity "Download" -Completed
     Write-Host "  -> saved to experiments\checkpoints" -ForegroundColor Gray
 }
@@ -140,7 +140,7 @@ function DownloadWandb {
     # Download from experiments/logs
     $dest = Join-Path $LOCAL "experiments\logs"
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -rq "${REMOTE}/experiments/logs/." $dest 2>$null
+    scp -r "${REMOTE}/experiments/logs/." $dest 2>$null
 
     Write-Progress -Activity "Download" -Completed
     Write-Host "  -> saved wandb runs to experiments\logs\" -ForegroundColor Gray
