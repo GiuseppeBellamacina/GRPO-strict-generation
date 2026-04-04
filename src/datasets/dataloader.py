@@ -64,6 +64,32 @@ def load_synthetic_dataset(
     return ds
 
 
+def _supports_system_role(tokenizer: Any) -> bool:
+    """Check if a tokenizer's chat template accepts the system role.
+
+    Cached per tokenizer class to avoid re-running on every sample.
+    """
+    key = id(tokenizer)
+    if key in _SYSTEM_ROLE_CACHE:
+        return _SYSTEM_ROLE_CACHE[key]
+    try:
+        tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": "test"},
+                {"role": "user", "content": "test"},
+            ],
+            tokenize=False,
+        )
+        result = True
+    except Exception:
+        result = False
+    _SYSTEM_ROLE_CACHE[key] = result
+    return result
+
+
+_SYSTEM_ROLE_CACHE: dict[int, bool] = {}
+
+
 def format_prompt_for_model(
     sample: dict[str, Any],
     tokenizer: Any = None,
@@ -73,9 +99,11 @@ def format_prompt_for_model(
     If a tokenizer with apply_chat_template is provided, uses it.
     Otherwise falls back to a generic ChatML-style format.
     """
-    # Check if tokenizer supports system role
-    chat_template = getattr(tokenizer, "chat_template", "") or ""
-    supports_system = "system" in chat_template.lower()
+    supports_system = (
+        tokenizer is not None
+        and hasattr(tokenizer, "apply_chat_template")
+        and _supports_system_role(tokenizer)
+    )
 
     if supports_system:
         messages = [
