@@ -32,6 +32,7 @@ function Upload {
         "cluster",
         "experiments/configs",
         "pyproject.toml",
+        "README.md",
         ".env"
     )
 
