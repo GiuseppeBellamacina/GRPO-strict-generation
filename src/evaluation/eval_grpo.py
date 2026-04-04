@@ -382,8 +382,16 @@ def main() -> None:
         "batch_size", 8
     )
 
-    # We need a tokenizer for formatting — load only the tokenizer (not the model)
-    tokenizer = load_tokenizer(config["model"]["name"])
+    # We need a tokenizer for formatting — try loading from the checkpoint
+    # (which always includes the tokenizer), falling back to the model name
+    # on HuggingFace. This avoids gated-repo errors (e.g. Gemma 2).
+    tokenizer_source = config["model"]["name"]
+    if (
+        ckpt_path
+        and (Path(ckpt_path) / "tokenizer_config.json").exists()
+    ):
+        tokenizer_source = ckpt_path
+    tokenizer = load_tokenizer(tokenizer_source)
     prompts = [
         format_prompt_for_model(test_ds[i], tokenizer)
         for i in range(len(test_ds))
