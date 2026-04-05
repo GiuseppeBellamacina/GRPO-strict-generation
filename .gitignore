@@ -45,6 +45,7 @@ experiments/logs/grpo/*/train*
 
 # Tracking
 wandb/
+.wandb/
 runs/
 
 # OS

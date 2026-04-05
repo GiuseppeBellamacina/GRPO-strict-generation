@@ -333,10 +333,11 @@ def main() -> None:
     wandb_cfg = config.get("wandb", {})
     import os
 
+    model_short = config["model"]["name"].split("/")[-1]
     os.environ["WANDB_DIR"] = str(eval_output)
     wandb.init(
         project=wandb_cfg.get("project", "grpo-strict-generation"),
-        name=f"eval-grpo-{ckpt_name}",
+        name=f"eval-{model_short}-{eval_run_id}",
         config=config,
         tags=wandb_cfg.get("tags", []) + ["eval", "post-grpo"],
         dir=str(eval_output),
