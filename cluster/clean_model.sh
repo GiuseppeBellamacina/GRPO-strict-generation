@@ -74,7 +74,7 @@ for arg in "$@"; do
             ;;
         -*)
             echo "❌ Opzione sconosciuta: $arg"
-            echo "Uso: bash cluster/clean_model.sh <MODEL_TAG> [--grpo|--baseline|--sft|--all]"
+            echo "Uso: bash cluster/clean_model.sh <MODEL_TAG> [--grpo|--baseline|--sft|--all] [--think|--nothink]"
             exit 1
             ;;
         *)
