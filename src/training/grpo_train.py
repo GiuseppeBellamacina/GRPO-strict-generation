@@ -134,7 +134,9 @@ def _prepare_prompt_dataset(
     for i in range(len(train_ds)):
         sample = train_ds[i]
         prompt = format_prompt_for_model(sample, tokenizer)
-        formatted.append({"prompt": prompt})
+        formatted.append(
+            {"prompt": prompt, "difficulty": sample["difficulty"]}
+        )
 
     return Dataset.from_list(formatted)
 
@@ -193,7 +195,12 @@ def _generate_curriculum_dataset(
                         prompt = format_prompt_for_model(
                             sample, tokenizer
                         )
-                        formatted.append({"prompt": prompt})
+                        formatted.append(
+                            {
+                                "prompt": prompt,
+                                "difficulty": sample["difficulty"],
+                            }
+                        )
                     if is_main_process():
                         diffs = list(train_ds["difficulty"])
                         print(
@@ -269,7 +276,9 @@ def _generate_curriculum_dataset(
     for i in range(len(train_ds)):
         sample = train_ds[i]
         prompt = format_prompt_for_model(sample, tokenizer)
-        formatted.append({"prompt": prompt})
+        formatted.append(
+            {"prompt": prompt, "difficulty": sample["difficulty"]}
+        )
 
     return Dataset.from_list(formatted)
 
@@ -408,6 +417,7 @@ def _run_curriculum_training(
         sample_logger = CompletionSampleLogger(
             reward_fns, rw, n_samples=3
         )
+        sample_logger.set_difficulty_map(stage_dataset)
         reward_fns = sample_logger.wrapped_reward_fns
 
         # 5. Build GRPOConfig
@@ -643,6 +653,7 @@ def main() -> None:
     sample_logger = CompletionSampleLogger(
         reward_fns, reward_weights, n_samples=3
     )
+    sample_logger.set_difficulty_map(prompt_dataset)
     reward_fns = sample_logger.wrapped_reward_fns
 
     # Build GRPO config

@@ -75,7 +75,8 @@ baselog() {
     tail -f "$logfile"
 }
 
-# Mostra l'ultimo log (qualsiasi tipo) — uso: lastlog
+# Mostra l'ultimo log (qualsiasi tipo) — uso: lastlog [N_RIGHE]
+# Senza argomento: tail -f (segui). Con argomento: mostra ultime N righe.
 lastlog() {
     local logfile
     logfile=$(ls -t "$PROJ_DIR"/logs/slurm*.log 2>/dev/null | head -1)
@@ -84,7 +85,11 @@ lastlog() {
         return 1
     fi
     echo "==> $logfile <=="
-    tail -f "$logfile"
+    if [ -n "$1" ]; then
+        tail -n "$1" "$logfile"
+    else
+        tail -f "$logfile"
+    fi
 }
 
 # ── Filesystem ───────────────────────────────────────────────────────────────
@@ -294,12 +299,25 @@ watcher-status() {
 watcher-kill() {
     if [ -f "$PROJ_DIR/.chain_pid" ]; then
         local pid=$(cat "$PROJ_DIR/.chain_pid")
-        if kill "$pid" 2>/dev/null; then
-            echo "✅ Watcher (PID $pid) terminato"
-        else
+        if ! ps -p "$pid" > /dev/null 2>&1; then
             echo "⚠️  Watcher (PID $pid) già morto"
+            rm -f "$PROJ_DIR/.chain_pid"
+            return 0
         fi
-        rm -f "$PROJ_DIR/.chain_pid"
+        read -p "Uccidere il watcher (PID $pid)? [y/N] " confirm
+        case "$confirm" in
+            [yY]|[yY][eE][sS])
+                if kill "$pid" 2>/dev/null; then
+                    echo "✅ Watcher (PID $pid) terminato"
+                else
+                    echo "⚠️  Watcher (PID $pid) già morto"
+                fi
+                rm -f "$PROJ_DIR/.chain_pid"
+                ;;
+            *)
+                echo "Annullato."
+                ;;
+        esac
     else
         echo "Nessun watcher attivo"
     fi
@@ -352,7 +370,7 @@ claudio() {
     echo "   trainlog <ID>     — segui log training"
     echo "   evallog <ID>      — segui log eval"
     echo "   baselog <ID>      — segui log baseline"
-    echo "   lastlog           — segui l'ultimo log"
+    echo "   lastlog [N]       — segui l'ultimo log (N=ultime N righe)"
     echo "   tree <DIR> [N]    — albero cartelle (profondità N)"
     echo "   ltree <DIR>       — albero cartelle compatto"
     echo "   gpu               — stato GPU"

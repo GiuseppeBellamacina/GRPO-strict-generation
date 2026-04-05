@@ -260,6 +260,7 @@ class CompletionSampleLogger:
         self._reward_weights = list(reward_weights)
         self._n_samples = n_samples
         self._buffer: deque[dict[str, Any]] = deque(maxlen=n_samples)
+        self._difficulty_map: dict[str, str] = {}
 
         # Component functions for per-sample breakdown
         self._component_fns = {
@@ -284,6 +285,23 @@ class CompletionSampleLogger:
         _interceptor.__name__ = original_fn.__name__
         self._reward_fns[0] = _interceptor
 
+    def set_difficulty_map(self, dataset: Any) -> None:
+        """Build a prompt→difficulty lookup from the training dataset."""
+        for row in dataset:
+            prompt = (
+                row.get("prompt", "")
+                if isinstance(row, dict)
+                else str(row)
+            )
+            diff = (
+                row.get("difficulty", "")
+                if isinstance(row, dict)
+                else ""
+            )
+            if prompt and diff:
+                # Use first 200 chars as key to avoid huge memory usage
+                self._difficulty_map[prompt[:200]] = diff
+
     def _capture(
         self,
         completions: list[Any],
@@ -300,6 +318,12 @@ class CompletionSampleLogger:
             prompt = prompts[i] if prompts else None
             instruction = _extract_user_instruction(prompt)
 
+            # Look up difficulty from the prompt
+            prompt_key = (
+                str(prompt)[:200] if prompt is not None else ""
+            )
+            difficulty = self._difficulty_map.get(prompt_key, "?")
+
             breakdown: dict[str, float] = {}
             for name, fn in self._component_fns.items():
                 try:
@@ -311,6 +335,7 @@ class CompletionSampleLogger:
                 {
                     "instruction": instruction,
                     "completion": text,
+                    "difficulty": difficulty,
                     "breakdown": breakdown,
                 }
             )
@@ -329,23 +354,24 @@ class CompletionSampleLogger:
             f"{'═' * 70}",
         ]
         for idx, sample in enumerate(self._buffer, 1):
-            instr = _truncate(sample["instruction"], 150)
-            comp = _truncate(sample["completion"], 400)
+            instr = sample["instruction"]
+            comp = sample["completion"]
+            diff = sample.get("difficulty", "?")
             bd = sample["breakdown"]
             reward_parts = "  ".join(
                 f"{k}={v:+.2f}" for k, v in bd.items()
             )
             lines.append(f"\n{_SEPARATOR}")
-            lines.append(f"  Sample {idx}")
+            lines.append(f"  Sample {idx}  [difficulty={diff}]")
             lines.append(f"{_SEPARATOR}")
             lines.append(f"  PROMPT: {instr}")
             think, output = _split_think(comp)
             if think:
                 lines.append("  THINK:")
-                for cl in _truncate(think, 200).splitlines():
+                for cl in think.splitlines():
                     lines.append(f"    {cl}")
             lines.append("  OUTPUT:")
-            for cl in _truncate(output, 300).splitlines():
+            for cl in output.splitlines():
                 lines.append(f"    {cl}")
             lines.append(f"  REWARDS: {reward_parts}")
         lines.append(f"{'═' * 70}\n")

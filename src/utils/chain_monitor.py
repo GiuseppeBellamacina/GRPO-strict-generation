@@ -33,6 +33,9 @@ CHAIN_PID_FILE = PROJ_DIR / ".chain_pid"
 LOGS_DIR = PROJ_DIR / "logs"
 CHAIN_LOG = LOGS_DIR / "chain_watcher.log"
 
+# Module-level setting for sample display (set by main() from --samples arg)
+_SAMPLE_MAX_LINES: int = 0  # 0 = no limit
+
 # Regex patterns for training log parsing
 _KV_STEP = re.compile(r"^\s+step=(\d+)\s+loss=")
 _STAGE_START = re.compile(r"\[stage (\d+)\] steps=(\d+)")
@@ -196,11 +199,15 @@ def _grep_lines(
 
 def _extract_completion_samples(
     lines: list[str],
+    max_lines: int = 0,
 ) -> list[str]:
     """Extract a compact view of the last sample from the log.
 
     Returns a short list of lines showing think (if any), output, and rewards.
     Only keeps the first sample from the last block.
+
+    Args:
+        max_lines: Max output lines to show (0 = no limit).
     """
     # Find the last COMPLETION SAMPLES block
     block: list[str] = []
@@ -223,6 +230,7 @@ def _extract_completion_samples(
     think_lines: list[str] = []
     output_lines: list[str] = []
     rewards_line = ""
+    difficulty = ""
     section = ""  # "think", "output", or ""
     found_first = False
     for line in block:
@@ -230,6 +238,10 @@ def _extract_completion_samples(
             break  # stop at second sample
         if line.startswith("Sample "):
             found_first = True
+            # Parse difficulty from "Sample 1  [difficulty=hard]"
+            dm = re.search(r"\[difficulty=(\w+)\]", line)
+            if dm:
+                difficulty = dm.group(1)
             continue
         if line == "THINK:":
             section = "think"
@@ -249,23 +261,45 @@ def _extract_completion_samples(
     if not output_lines and not rewards_line:
         return []
 
-    result = [f"{_DIM}─── Last completion ───{_RST}"]
+    # Difficulty badge
+    diff_colors = {
+        "simple": _GREEN,
+        "medium": _YELLOW,
+        "hard": _RED,
+    }
+    diff_color = diff_colors.get(difficulty, _DIM)
+    diff_badge = (
+        f" {diff_color}[{difficulty}]{_RST}" if difficulty else ""
+    )
+
+    result = [
+        f"{_DIM}─── Last completion{_RST}{diff_badge} {_DIM}───{_RST}"
+    ]
+
+    # Think section (colored magenta/purple)
     if think_lines:
         think_text = " ".join(
             tl.strip() for tl in think_lines
         ).strip()
-        if len(think_text) > 80:
+        if max_lines > 0 and len(think_text) > 80:
             think_text = think_text[:80] + "..."
-        result.append(f"  {_DIM}think: {think_text}{_RST}")
-    # Show output (max 2 lines)
+        result.append(
+            f"  {_MAGENTA}<think>{_RST} {_MAGENTA}{think_text}{_RST}"
+        )
+
+    # Output section (dim/gray)
     if output_lines:
-        display = output_lines[:2]
-        if len(output_lines) > 2:
+        limit = max_lines if max_lines > 0 else len(output_lines)
+        display = output_lines[:limit]
+        if len(output_lines) > limit:
             display.append("[...]")
         for dl in display:
             result.append(f"  {_DIM}{dl}{_RST}")
+
+    # Rewards line (colored)
     if rewards_line:
         result.append(f"  {_CYAN}{rewards_line}{_RST}")
+
     return result
 
 
@@ -297,7 +331,9 @@ def _parse_training_log(log_path: Path, job: JobInfo) -> None:
     tail = _tail_lines(log_path, n=200)
 
     # 3b. Extract completion samples from tail
-    samples = _extract_completion_samples(tail)
+    samples = _extract_completion_samples(
+        tail, max_lines=_SAMPLE_MAX_LINES
+    )
     if samples:
         job.completion_samples = samples
     for line in reversed(tail):
@@ -877,7 +913,12 @@ def _watcher_status() -> str:
         return f"{_RED}Watcher: UNKNOWN{_RST}"
 
 
-def _display(jobs: list[JobInfo], show_table: bool = True) -> None:
+def _display(
+    jobs: list[JobInfo],
+    show_table: bool = True,
+    show_samples: bool = False,
+    max_sample_lines: int = 0,
+) -> None:
     """Print the full pipeline status."""
     completed = sum(1 for j in jobs if j.state == "COMPLETED")
     failed = sum(1 for j in jobs if j.state == "FAILED")
@@ -1014,7 +1055,7 @@ def _display(jobs: list[JobInfo], show_table: bool = True) -> None:
         print(f"  {_GREEN}{_BOLD}✓ Pipeline finished!{_RST}")
 
     # Show completion samples from the active training job
-    if running and running[0].completion_samples:
+    if show_samples and running and running[0].completion_samples:
         print()
         for sl in running[0].completion_samples:
             print(f"  {sl}")
@@ -1067,7 +1108,21 @@ def main() -> None:
         action="store_true",
         help="Show the full job table (default: compact view)",
     )
+    parser.add_argument(
+        "--samples",
+        nargs="?",
+        const=0,
+        type=int,
+        default=None,
+        help="Show completion samples. Optional: max output lines (default: no limit)",
+    )
     args = parser.parse_args()
+
+    show_samples = args.samples is not None
+    max_sample_lines = args.samples if args.samples else 0
+
+    global _SAMPLE_MAX_LINES
+    _SAMPLE_MAX_LINES = max_sample_lines
 
     print("GRPO Monitor — Ctrl+C to exit")
     print(f"Polling every {args.poll}s...")
@@ -1076,7 +1131,12 @@ def main() -> None:
     try:
         while True:
             jobs = _build_pipeline()
-            _display(jobs, show_table=args.tab)
+            _display(
+                jobs,
+                show_table=args.tab,
+                show_samples=show_samples,
+                max_sample_lines=max_sample_lines,
+            )
 
             # Check if pipeline/job is done
             is_pipeline = CHAIN_PID_FILE.exists() or (
