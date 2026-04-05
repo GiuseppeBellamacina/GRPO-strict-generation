@@ -23,23 +23,34 @@ from typing import Any, Callable
 # ---------------------------------------------------------------------------
 
 
+def _strip_think_tags(text: str) -> str:
+    """Remove ``<think>...</think>`` blocks from text."""
+    return re.sub(
+        r"<think>.*?</think>", "", text, flags=re.DOTALL
+    ).strip()
+
+
 def extract_code_block(text: str, language: str) -> str | None:
     """Extract the first fenced code block of the given language from text.
 
     Looks for ```language ... ``` patterns. Falls back to the first
     generic ``` ... ``` block if no language-specific block is found.
+
+    Any ``<think>...</think>`` blocks are stripped before the bare-JSON
+    fallback so that reasoning tags don't prevent JSON detection.
     """
-    pattern = rf"```{re.escape(language)}\s*\n(.*?)```"
+    pattern = rf"```{re.escape(language)}\s*(.*?)```"
     match = re.search(pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
 
-    pattern = r"```\s*\n(.*?)```"
+    pattern = r"```\s*(.*?)```"
     match = re.search(pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
 
-    stripped = text.strip()
+    # Strip <think> tags before bare-JSON fallback
+    stripped = _strip_think_tags(text)
     if language == "json" and (
         stripped.startswith("{") or stripped.startswith("[")
     ):
@@ -191,11 +202,9 @@ def _requires_array_toplevel(instruction: str) -> bool | None:
 def format_reward(completion: str) -> float:
     """1.0 if a proper ```json ... ``` block is present, 0.5 for a generic
     ``` ... ``` block, 0.0 otherwise."""
-    if re.search(
-        r"```json\s*\n[\s\S]*?```", completion, re.IGNORECASE
-    ):
+    if re.search(r"```json\s*[\s\S]*?```", completion, re.IGNORECASE):
         return 1.0
-    if re.search(r"```\s*\n[\s\S]*?```", completion):
+    if re.search(r"```\s*[\s\S]*?```", completion):
         return 0.5
     return 0.0
 
@@ -317,26 +326,32 @@ def reasoning_reward(completion: str) -> float:
     """Graduated reward for chain-of-thought in <think>...</think> tags.
 
     Scale (based on stripped content length):
-      0.0  — no <think>...</think> block, or content < 10 chars
-      linear ramp 10→200 chars, capped at 1.0
+      -0.5 — no <think>...</think> block at all (penalise skipping)
+      -0.2 — <think> present but content < 10 chars (lazy/empty think)
+       0.0 — 10 chars (minimum useful reasoning)
+       linear ramp 10→80 chars toward 1.0
+       1.0 — 80+ chars of reasoning (plateau — avoid rewarding overthinking)
+
+    The cap is intentionally low: we want the model to *think*, not to
+    pad its reasoning.  ~80 chars is roughly one well-formed sentence
+    of planning, which is sufficient signal.
 
     Examples:
-      50 chars  → 0.25
-      100 chars → 0.50
-      200+ chars → 1.0
-
-    A graduated signal is critical for GRPO: binary 0/1 creates no
-    variance within groups where all completions either have or lack
-    think tags, collapsing the advantage estimate.
+      no think   → -0.50
+      empty think → -0.20
+      30 chars  →  0.29
+      50 chars  →  0.57
+      80+ chars →  1.00
     """
     m = re.search(r"<think>(.*?)</think>", completion, re.DOTALL)
     if not m:
-        return 0.0
+        return -0.5
     content = m.group(1).strip()
     length = len(content)
     if length < 10:
-        return 0.0
-    return min(length / 200, 1.0)
+        return -0.2
+    # Linear ramp: 10→80 maps to 0.0→1.0
+    return min((length - 10) / 70, 1.0)
 
 
 def truncation_reward(completion: str) -> float:
@@ -356,11 +371,11 @@ def truncation_reward(completion: str) -> float:
     fenced blocks that are truncated already score 0.0 on *all* other
     rewards (the regex never matches an unclosed fence).
     """
-    stripped = completion.strip()
+    stripped = _strip_think_tags(completion)
 
     # If there's a matched code fence pair (open + close ```), not truncated.
     if re.search(
-        r"```(?:json)?\s*\n[\s\S]*?```", stripped, re.IGNORECASE
+        r"```(?:json)?\s*[\s\S]*?```", stripped, re.IGNORECASE
     ):
         return 1.0
 

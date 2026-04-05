@@ -29,6 +29,22 @@ class TestExtractCodeBlock:
         text = "Just some plain text with no code."
         assert extract_code_block(text, "json") is None
 
+    def test_think_then_fenced(self):
+        text = '<think>Let me reason about this.</think>\n```json\n{"a": 1}\n```'
+        assert extract_code_block(text, "json") == '{"a": 1}'
+
+    def test_think_then_bare_json(self):
+        text = '<think>Reasoning here.</think>\n{"a": 1}'
+        assert extract_code_block(text, "json") == '{"a": 1}'
+
+    def test_think_then_bare_array(self):
+        text = "<think>Some thought.</think>\n[1, 2, 3]"
+        assert extract_code_block(text, "json") == "[1, 2, 3]"
+
+    def test_think_only_no_json(self):
+        text = "<think>Just thinking, no JSON.</think>"
+        assert extract_code_block(text, "json") is None
+
 
 class TestFormatReward:
     def test_json_fenced_block(self):
@@ -129,26 +145,24 @@ class TestReasoningReward:
         assert reasoning_reward(text) == 1.0
 
     def test_with_medium_reasoning(self):
-        # ~100 chars → 0.5
+        # 100 chars → capped at 1.0 (plateau at 80)
         content = "I need to create a JSON object with three keys: name, age, and active. Let me structure it properly."
         text = f"<think>{content}</think>\n```json\n{{}}\n```"
-        assert reasoning_reward(text) == pytest.approx(
-            len(content.strip()) / 200, abs=0.01
-        )
+        assert reasoning_reward(text) == 1.0
 
     def test_without_reasoning(self):
         text = '```json\n{"key": "val"}\n```'
-        assert reasoning_reward(text) == 0.0
+        assert reasoning_reward(text) == -0.5
 
     def test_short_reasoning(self):
         text = "<think>ok</think>\n```json\n{}\n```"
-        assert reasoning_reward(text) == 0.0
+        assert reasoning_reward(text) == -0.2
 
     def test_graduated_signal(self):
-        # 50 chars → 0.25
+        # 50 chars → (50-10)/70 ≈ 0.57
         content = "A" * 50
         text = f"<think>{content}</think>"
-        assert reasoning_reward(text) == pytest.approx(0.25)
+        assert reasoning_reward(text) == pytest.approx((50 - 10) / 70)
 
     def test_cap_at_one(self):
         content = "A" * 500
@@ -158,13 +172,17 @@ class TestReasoningReward:
 
 class TestCombinedReward:
     def test_valid_json_no_instruction(self):
-        # format=1.0, validity=1.0, schema=1.0 (no constraints), reasoning=0.0
+        # format=1.0, validity=1.0, schema=1.0, reasoning=-0.5 (no think)
         text = '```json\n{"x": 1}\n```'
-        assert combined_reward(text) == 0.10 + 0.30 + 0.50 + 0.0
+        assert combined_reward(text) == pytest.approx(
+            0.20 * 1.0 + 0.35 * 1.0 + 0.35 * 1.0 + 0.10 * (-0.5)
+        )
 
     def test_no_code_block(self):
-        # format=0, validity=0, schema=0, reasoning=0
-        assert combined_reward("plain text") == 0.0
+        # format=0, validity=0, schema=0, reasoning=-0.5
+        assert combined_reward("plain text") == pytest.approx(
+            0.10 * (-0.5)
+        )
 
     def test_with_reasoning(self):
         think_content = (
@@ -190,7 +208,10 @@ class TestCombinedReward:
             weight_schema=0.25,
             weight_reasoning=0.25,
         )
-        assert score == pytest.approx(0.25 + 0.25 + 0.25 + 0.0)
+        # reasoning=-0.5 for no think
+        assert score == pytest.approx(
+            0.25 + 0.25 + 0.25 + 0.25 * (-0.5)
+        )
 
 
 import pytest  # noqa: E402  (import after class defs to keep test grouping)
@@ -224,6 +245,20 @@ class TestTruncationReward:
 
     def test_bare_array_complete(self):
         assert truncation_reward("[1, 2, 3]") == 1.0
+
+    def test_think_then_fenced_complete(self):
+        text = (
+            '<think>Some reasoning.</think>\n```json\n{"a": 1}\n```'
+        )
+        assert truncation_reward(text) == 1.0
+
+    def test_think_then_bare_json_complete(self):
+        text = '<think>Some reasoning.</think>\n{"a": 1}'
+        assert truncation_reward(text) == 1.0
+
+    def test_think_then_bare_json_truncated(self):
+        text = '<think>Some reasoning.</think>\n{"a": 1,'
+        assert truncation_reward(text) == -1.0
 
 
 class TestBuildRewardFunctions:

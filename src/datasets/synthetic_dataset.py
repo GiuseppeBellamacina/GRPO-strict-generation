@@ -31,7 +31,9 @@ def _build_system_prompt(thinking: bool = True) -> str:
             "You are a helpful assistant that generates valid JSON. "
             "Think through the problem inside <think>...</think> tags, then respond "
             "with a JSON code block wrapped in ```json and ``` markers. "
-            "No other text is allowed outside the think block and the JSON block."
+            "No other text is allowed outside the think block and the JSON block.\n\n"
+            "Example structure:\n"
+            "<think>\nYour reasoning here.\n</think>\n```json\n{...}\n```"
         )
     return (
         "You are a helpful assistant that generates valid JSON. "

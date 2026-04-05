@@ -23,6 +23,7 @@ _DEFAULT_COLS = [
     "rewards/format_reward/mean",
     "rewards/validity_reward/mean",
     "rewards/schema_reward/mean",
+    "rewards/reasoning_reward/mean",
     "rewards/truncation_reward/mean",
     "completion_length",
     "learning_rate",

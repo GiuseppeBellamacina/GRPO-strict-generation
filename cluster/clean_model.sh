@@ -7,6 +7,8 @@
 #   bash cluster/clean_model.sh <MODEL_TAG>              # cancella GRPO (default)
 #   bash cluster/clean_model.sh <MODEL_TAG> --all         # cancella tutto
 #   bash cluster/clean_model.sh <MODEL_TAG> --baseline    # cancella solo baseline
+#   bash cluster/clean_model.sh <MODEL_TAG> --think       # cancella solo variante think
+#   bash cluster/clean_model.sh <MODEL_TAG> --nothink     # cancella solo variante nothink
 #
 # MODEL_TAG è il nome usato nei path (es. smollm2-135m, tinyllama-11b, ...).
 # Senza MODEL_TAG: mostra un riepilogo di cosa esiste per ogni modello (dry-run).
@@ -16,6 +18,8 @@
 #   --baseline   Solo dati baseline
 #   --sft        Solo dati SFT
 #   --all        GRPO + baseline + SFT
+#   --think      Solo variante think (GRPO)
+#   --nothink    Solo variante nothink (GRPO)
 #
 # Esempi:
 #   bash cluster/clean_model.sh                            # dry-run
@@ -23,6 +27,8 @@
 #   bash cluster/clean_model.sh tinyllama-11b --all         # cancella tutto
 #   bash cluster/clean_model.sh tinyllama-11b --baseline    # cancella solo baseline
 #   bash cluster/clean_model.sh gemma2-2b --grpo --sft     # cancella GRPO + SFT
+#   bash cluster/clean_model.sh gemma2-2b --think           # cancella solo variante think
+#   bash cluster/clean_model.sh smollm2-135m --nothink      # cancella solo variante nothink
 # ============================================================================
 
 set -e
@@ -49,6 +55,7 @@ MODEL=""
 DO_GRPO=0
 DO_BASELINE=0
 DO_SFT=0
+FILTER_VARIANT=""  # empty = both, "think" or "nothink"
 
 for arg in "$@"; do
     case "$arg" in
@@ -56,6 +63,8 @@ for arg in "$@"; do
         --baseline) DO_BASELINE=1 ;;
         --sft)      DO_SFT=1 ;;
         --all)      DO_GRPO=1; DO_BASELINE=1; DO_SFT=1 ;;
+        --think)    FILTER_VARIANT="think" ;;
+        --nothink)  FILTER_VARIANT="nothink" ;;
         --help|-h)
             sed -n '2,/^# ====.*===$/p' "$0" | head -n -1 | sed 's/^# \?//'
             echo ""
@@ -131,14 +140,20 @@ if [ $FOUND -eq 0 ]; then
 fi
 
 echo "Pulizia modello: $MODEL"
-echo "Scope: $([ $DO_GRPO -eq 1 ] && echo 'GRPO ')$([ $DO_BASELINE -eq 1 ] && echo 'BASELINE ')$([ $DO_SFT -eq 1 ] && echo 'SFT ')"
+echo "Scope: $([ $DO_GRPO -eq 1 ] && echo 'GRPO ')$([ $DO_BASELINE -eq 1 ] && echo 'BASELINE ')$([ $DO_SFT -eq 1 ] && echo 'SFT ')$([ -n "$FILTER_VARIANT" ] && echo "[variant=$FILTER_VARIANT] ")"
 echo ""
 
 CLEANED=0
 
 # ── GRPO ──────────────────────────────────────────────────────────────────────
 if [ $DO_GRPO -eq 1 ]; then
-    for variant in "${THINK_VARIANTS[@]}"; do
+    # Determine which variants to clean
+    if [ -n "$FILTER_VARIANT" ]; then
+        CLEAN_VARIANTS=("$FILTER_VARIANT")
+    else
+        CLEAN_VARIANTS=("${THINK_VARIANTS[@]}")
+    fi
+    for variant in "${CLEAN_VARIANTS[@]}"; do
         # Checkpoints: experiments/checkpoints/grpo/<variant>/<model>/
         DIR="experiments/checkpoints/grpo/$variant/$MODEL"
         if [ -d "$DIR" ]; then
