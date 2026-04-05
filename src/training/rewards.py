@@ -533,12 +533,15 @@ def truncation_reward(completion: str) -> float:
 def repetition_reward(completion: str) -> float:
     """Penalize degenerate repetitive completions.
 
-    Catches three common failure modes of small language models:
+    Catches four common failure modes of small language models:
       1. Duplicate code blocks — the same JSON repeated in multiple fenced
          blocks (model re-generates the answer)
-      2. Line-level repetition — same key-value pairs or structural lines
+      2. Substring token loop — a short token/word repeats consecutively
+         many times within a value (e.g. ``"detail_detail_detail_..."``
+         or ``"the the the the ..."``)
+      3. Line-level repetition — same key-value pairs or structural lines
          appearing many times (model stuck producing similar dict entries)
-      3. Word-trigram repetition — repeated phrases within values or after
+      4. Word-trigram repetition — repeated phrases within values or after
          the code block (model stuck in a token loop)
 
     Scale:
@@ -547,8 +550,6 @@ def repetition_reward(completion: str) -> float:
      -1.0 — severe degenerate loop
     """
     text = completion.strip()
-    if len(text) < 80:
-        return 1.0  # too short to judge
 
     # --- Duplicate code blocks ---
     # If there are multiple fenced code blocks, it's almost always a
@@ -556,6 +557,15 @@ def repetition_reward(completion: str) -> float:
     code_blocks = re.findall(r"```(?:\w*)\s*([\s\S]*?)```", text)
     if len(code_blocks) >= 2:
         return -1.0
+
+    # --- Substring token loop ---
+    # Catches patterns like "word_word_word_word_..." or "abc abc abc abc"
+    # where a short token (2-30 chars) repeats 5+ times consecutively.
+    if re.search(r"(.{2,30})\1{4,}", text):
+        return -1.0
+
+    if len(text) < 80:
+        return 1.0  # too short for statistical checks below
 
     # --- Line-level uniqueness ---
     # Ignore very short lines (braces, commas) that naturally repeat in JSON
