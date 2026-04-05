@@ -6,7 +6,9 @@ from src.training.rewards import (
     extract_code_block,
     format_reward,
     reasoning_reward,
+    repetition_reward,
     schema_reward,
+    strictness_reward,
     truncation_reward,
     validity_reward,
 )
@@ -261,6 +263,84 @@ class TestTruncationReward:
         assert truncation_reward(text) == -1.0
 
 
+class TestRepetitionReward:
+    def test_short_text_neutral(self):
+        assert repetition_reward("short") == 1.0
+
+    def test_normal_json(self):
+        text = '```json\n{"name": "Alice", "age": 30, "city": "Rome", "job": "engineer"}\n```'
+        assert repetition_reward(text) == 1.0
+
+    def test_normal_array(self):
+        items = ", ".join(
+            f'{{"id": {i}, "val": "item_{i}"}}' for i in range(10)
+        )
+        text = f"```json\n[{items}]\n```"
+        assert repetition_reward(text) == 1.0
+
+    def test_severe_line_repetition(self):
+        """Model stuck producing the same key-value pair."""
+        lines = ['  "type": {"length": 5},'] * 60
+        text = "```json\n{\n" + "\n".join(lines) + "\n}\n```"
+        assert repetition_reward(text) == -1.0
+
+    def test_severe_phrase_repetition(self):
+        """Model stuck repeating a long phrase."""
+        phrase = "ref: /path/to/documentation/"
+        text = phrase * 50
+        assert repetition_reward(text) == -1.0
+
+    def test_moderate_repetition(self):
+        """Some repetition but not extreme → 0.0."""
+        # Build text with ~40% unique lines
+        unique = [f'  "key_{i}": "value_{i}",' for i in range(8)]
+        repeated = ['  "type": "default",'] * 12
+        text = (
+            "```json\n{\n" + "\n".join(unique + repeated) + "\n}\n```"
+        )
+        r = repetition_reward(text)
+        assert r <= 0.0  # at least moderate penalty
+
+
+class TestStrictnessReward:
+    def test_code_block_only(self):
+        text = '```json\n{"a": 1}\n```'
+        assert strictness_reward(text) == 1.0
+
+    def test_code_block_with_think(self):
+        text = '<think>Let me think.</think>\n```json\n{"a": 1}\n```'
+        assert strictness_reward(text) == 1.0
+
+    def test_trivial_whitespace(self):
+        text = '```json\n{"a": 1}\n```\n'
+        assert strictness_reward(text) == 1.0
+
+    def test_minor_preamble(self):
+        """'Here:' is 5 chars → 0.5 (≤ 10 chars)."""
+        text = 'Here:\n```json\n{"a": 1, "b": 2, "c": 3}\n```'
+        assert strictness_reward(text) == 0.5
+
+    def test_any_extra_text_penalized(self):
+        """Even a short sentence after the block is penalized (> 10 chars)."""
+        text = '```json\n{"a": 1}\n```\nThis is the answer.'
+        assert strictness_reward(text) <= 0.0
+
+    def test_significant_trailing_text(self):
+        json_block = '```json\n{"a": 1}\n```'
+        explanation = "\n\nThis JSON shows a simple object. " * 5
+        text = json_block + explanation
+        assert strictness_reward(text) <= -0.5
+
+    def test_mostly_explanation(self):
+        json_block = '```json\n{"x": 1}\n```'
+        explanation = "\n" + "A required field. " * 30
+        text = json_block + explanation
+        assert strictness_reward(text) == -1.0
+
+    def test_no_code_block(self):
+        assert strictness_reward("just plain text") == 0.0
+
+
 class TestBuildRewardFunctions:
     def test_returns_correct_count_with_thinking(self):
         funcs, weights = build_reward_functions(thinking=True)
@@ -320,3 +400,32 @@ class TestBuildRewardFunctions:
         )
         assert len(funcs) == 4
         assert weights == [0.25, 0.30, 0.30, 0.15]
+
+    def test_repetition_included_when_weight_nonzero(self):
+        funcs, weights = build_reward_functions(
+            weight_format=0.15,
+            weight_validity=0.20,
+            weight_schema=0.25,
+            weight_reasoning=0.30,
+            weight_truncation=0.10,
+            weight_repetition=0.10,
+            thinking=True,
+        )
+        names = [f.__name__ for f in funcs]
+        assert "repetition_reward" in names
+        assert len(funcs) == 6
+
+    def test_strictness_included_when_weight_nonzero(self):
+        funcs, weights = build_reward_functions(
+            weight_format=0.15,
+            weight_validity=0.20,
+            weight_schema=0.25,
+            weight_reasoning=0.30,
+            weight_truncation=0.10,
+            weight_repetition=0.10,
+            weight_strictness=0.10,
+            thinking=True,
+        )
+        names = [f.__name__ for f in funcs]
+        assert "strictness_reward" in names
+        assert len(funcs) == 7

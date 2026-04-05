@@ -252,6 +252,9 @@ class CompletionSampleLogger:
             extract_code_block,
             format_reward,
             reasoning_reward,
+            repetition_reward,
+            schema_reward,
+            strictness_reward,
             truncation_reward,
             validity_reward,
         )
@@ -266,8 +269,11 @@ class CompletionSampleLogger:
         self._component_fns = {
             "format": format_reward,
             "validity": validity_reward,
+            "schema": schema_reward,
             "reasoning": reasoning_reward,
             "truncation": truncation_reward,
+            "repetition": repetition_reward,
+            "strictness": strictness_reward,
         }
         self._extract = extract_code_block
 

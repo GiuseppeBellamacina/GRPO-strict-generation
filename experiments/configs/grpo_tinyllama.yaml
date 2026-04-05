@@ -70,11 +70,13 @@ grpo:
 
 # --- Pesi della reward function ---
 reward:
-  weight_format: 0.25
-  weight_validity: 0.30
-  weight_schema: 0.30
-  weight_truncation: 0.15
+  weight_format: 0.20
+  weight_validity: 0.25
+  weight_schema: 0.25
+  weight_truncation: 0.10
   weight_reasoning: 0.0
+  weight_repetition: 0.10
+  weight_strictness: 0.10
 
 # --- Curriculum Learning ---
 curriculum:
@@ -116,4 +118,12 @@ evaluation:
 wandb:
   project: "grpo-strict-generation"
   run_name: "grpo-tinyllama-11b-curriculum"
-  tags: ["grpo", "TinyLlama-1.1B", "json-only", "cluster-l40s", "curriculum", "nothink"]
+  tags:
+    [
+      "grpo",
+      "TinyLlama-1.1B",
+      "json-only",
+      "cluster-l40s",
+      "curriculum",
+      "nothink",
+    ]

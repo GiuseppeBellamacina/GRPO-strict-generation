@@ -272,13 +272,24 @@ run-eval() {
 }
 
 # Lancia tutti i modelli (train + eval curriculum)
-# Uso: run-all [--think] [--eval-only] [--train-only] [--models=1t,2e,3]
+# Uso: run-all [--think] [--eval-only] [--train-only] [--models=1t,2e,3] [--resume]
 run-all() {
     cd "$PROJ_DIR" && bash cluster/run_all.sh "$@"
 }
 
 # Controlla se il watcher è attivo
 watcher-status() {
+    # Controlla se c'è un fallimento
+    if [ -f "$PROJ_DIR/.chain_failed" ]; then
+        local failed=$(cat "$PROJ_DIR/.chain_failed")
+        local remaining=0
+        [ -f "$PROJ_DIR/.job_chain" ] && remaining=$(wc -l < "$PROJ_DIR/.job_chain")
+        echo "❌ Pipeline FALLITA — job: $failed"
+        echo "   Rimanenti: $remaining job"
+        echo "   Per riprendere: run-all --resume"
+        return 1
+    fi
+
     if [ -f "$PROJ_DIR/.chain_pid" ]; then
         local pid=$(cat "$PROJ_DIR/.chain_pid")
         if ps -p "$pid" > /dev/null 2>&1; then

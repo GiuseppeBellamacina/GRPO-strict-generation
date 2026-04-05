@@ -73,11 +73,13 @@ grpo:
 
 # --- Pesi della reward function ---
 reward:
-  weight_format: 0.15
-  weight_validity: 0.20
-  weight_schema: 0.25
+  weight_format: 0.10
+  weight_validity: 0.15
+  weight_schema: 0.20
   weight_truncation: 0.10
-  weight_reasoning: 0.30
+  weight_reasoning: 0.25
+  weight_repetition: 0.10
+  weight_strictness: 0.10
 
 # --- Curriculum Learning ---
 curriculum:

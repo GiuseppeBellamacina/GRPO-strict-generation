@@ -42,19 +42,24 @@ GLOBAL_TRAIN=1
 GLOBAL_EVAL=1
 ONLY_MODELS=""
 USE_THINK=0
+RESUME=0
 for arg in "$@"; do
     case "$arg" in
         --eval-only)  GLOBAL_TRAIN=0 ;;
         --train-only) GLOBAL_EVAL=0 ;;
         --think)      USE_THINK=1 ;;
+        --resume)     RESUME=1 ;;
         --models=*)   ONLY_MODELS="${arg#--models=}" ;;
         --help|-h)
-            echo "Uso: bash cluster/run_all.sh [--eval-only] [--train-only] [--models=SPEC]"
+            echo "Uso: bash cluster/run_all.sh [--eval-only] [--train-only] [--models=SPEC] [--resume]"
             echo ""
             echo "Opzioni globali:"
             echo "  --eval-only      Solo evaluation per tutti (skip training)"
             echo "  --train-only     Solo training per tutti (skip eval)"
             echo "  --think          Usa config *_think.yaml (thinking/reasoning abilitato)"
+            echo "  --resume         Riprendi pipeline da dove si era fermata"
+            echo "                   Se l'ultimo job era un train, viene rilanciato con --resume"
+            echo "                   per riprendere dall'ultimo checkpoint salvato."
             echo ""
             echo "Selezione modelli (--models=SPEC):"
             echo "  SPEC è una lista separata da virgole: INDICE[SUFFISSO],..."
@@ -100,6 +105,73 @@ fi
 
 PROJ_DIR="$HOME/GRPO-strict-generation"
 CHAIN_FILE="$PROJ_DIR/.job_chain"
+FAILED_FILE="$PROJ_DIR/.chain_failed"
+
+# ── Resume mode ───────────────────────────────────────────────────────────────
+if [ "$RESUME" -eq 1 ]; then
+    if [ ! -f "$FAILED_FILE" ]; then
+        echo "❌ Nessun .chain_failed trovato. Non c'è nulla da riprendere."
+        echo "   Usa: bash cluster/run_all.sh [opzioni] (senza --resume) per una nuova pipe."
+        exit 1
+    fi
+
+    FAILED_JOB=$(cat "$FAILED_FILE")
+    FAILED_TYPE=$(echo "$FAILED_JOB" | cut -d: -f1)
+    FAILED_CFG=$(echo "$FAILED_JOB" | cut -d: -f2)
+    FAILED_TAG=$(echo "$FAILED_JOB" | cut -d: -f3)
+
+    echo "============================================"
+    echo "  RESUME Pipeline"
+    echo "  Date:      $(date)"
+    echo "  Failed job: $FAILED_TYPE $FAILED_TAG"
+    echo "  Config:     $FAILED_CFG"
+    echo "============================================"
+    echo ""
+
+    # Ricostruisci la catena: job fallito (con --resume se train) + eval + rimanenti
+    RESUME_CHAIN=$(mktemp)
+    if [ "$FAILED_TYPE" = "train" ]; then
+        echo "train:${FAILED_CFG}:${FAILED_TAG}:--resume" > "$RESUME_CHAIN"
+        # Riaggiungi l'eval che era stato rimosso quando il train è fallito
+        echo "eval:${FAILED_CFG}:${FAILED_TAG}" >> "$RESUME_CHAIN"
+        echo "→ Training $FAILED_TAG verrà ripreso dall'ultimo checkpoint"
+        echo "→ Eval $FAILED_TAG verrà eseguito dopo il train"
+    else
+        echo "eval:${FAILED_CFG}:${FAILED_TAG}" > "$RESUME_CHAIN"
+        echo "→ Eval $FAILED_TAG verrà rieseguito da capo"
+    fi
+
+    # Aggiungi job rimanenti se il chain file esiste ancora
+    if [ -f "$CHAIN_FILE" ] && [ -s "$CHAIN_FILE" ]; then
+        cat "$CHAIN_FILE" >> "$RESUME_CHAIN"
+    fi
+    mv "$RESUME_CHAIN" "$CHAIN_FILE"
+    rm -f "$FAILED_FILE"
+
+    TOTAL=$(wc -l < "$CHAIN_FILE")
+    echo ""
+    echo "Catena ($TOTAL job):"
+    cat -n "$CHAIN_FILE"
+    echo ""
+
+    # Uccidi eventuale watcher precedente
+    if [ -f .chain_pid ]; then
+        OLD_PID=$(cat .chain_pid)
+        kill "$OLD_PID" 2>/dev/null && echo "Watcher precedente (PID $OLD_PID) terminato."
+        rm -f .chain_pid
+    fi
+
+    nohup bash cluster/chain_next.sh >> logs/chain_watcher.log 2>&1 &
+    WATCHER_PID=$!
+    echo "$WATCHER_PID" > .chain_pid
+
+    echo "============================================"
+    echo "  Pipeline ripresa!"
+    echo "  Watcher PID: $WATCHER_PID"
+    echo "  Log: logs/chain_watcher.log"
+    echo "============================================"
+    exit 0
+fi
 
 # ── Filtra modelli se --models è specificato ──────────────────────────────────
 # Ogni entry diventa "TAG:CONFIG:do_train:do_eval"

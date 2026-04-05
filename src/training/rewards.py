@@ -118,8 +118,15 @@ def _extract_exact_count(instruction: str) -> int | None:
     m = re.search(r"exactly\s+(\d+)", instruction, re.IGNORECASE)
     if m:
         return int(m.group(1))
-    units = r"items?|objects?|elements?|steps?|widgets?|operations?|tasks?|entries?"
+    units = r"items?|objects?|elements?|steps?|widgets?|operations?|tasks?|entries?|pairs?|records?|values?|keys?|fields?|abbreviations?|names?|strings?|numbers?|things?|examples?"
     m = re.search(rf"(\d+)\s+(?:{units})", instruction, re.IGNORECASE)
+    if not m:
+        # Handle "N <words> <unit>" e.g. "5 unit of measurement abbreviations"
+        m = re.search(
+            rf"(\d+)\s+(?:\w+\s+){{1,4}}(?:{units})",
+            instruction,
+            re.IGNORECASE,
+        )
     if m:
         return int(m.group(1))
     return None
@@ -182,7 +189,7 @@ def _requires_array_toplevel(instruction: str) -> bool | None:
     """Return True/False if instruction unambiguously requires array/object at
     the top level; None if unspecified."""
     m = re.match(
-        r"Generate\s+a\s+(JSON\s+array|list\s+of|array\s+of|JSON\s+object)",
+        r"Generate\s+a\s+(?:\w+\s+)*(JSON\s+array|list\s+of|array\s+of|JSON\s+object)",
         instruction,
         re.IGNORECASE,
     )
@@ -405,6 +412,99 @@ def truncation_reward(completion: str) -> float:
     return 1.0
 
 
+def repetition_reward(completion: str) -> float:
+    """Penalize degenerate repetitive completions.
+
+    Catches two common failure modes of small language models:
+      1. Line-level repetition — same key-value pairs or structural lines
+         appearing many times (model stuck producing similar dict entries)
+      2. Word-trigram repetition — repeated phrases within values or after
+         the code block (model stuck in a token loop)
+
+    Scale:
+      1.0 — normal output, low repetition
+      0.0 — moderate repetition (warning signal)
+     -1.0 — severe degenerate loop
+    """
+    text = completion.strip()
+    if len(text) < 80:
+        return 1.0  # too short to judge
+
+    # --- Line-level uniqueness ---
+    # Ignore very short lines (braces, commas) that naturally repeat in JSON
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if len(line.strip()) > 5
+    ]
+    line_ratio = (
+        len(set(lines)) / len(lines) if len(lines) >= 6 else 1.0
+    )
+
+    # --- Word-trigram uniqueness ---
+    words = text.split()
+    if len(words) >= 20:
+        trigrams = [
+            tuple(words[i : i + 3]) for i in range(len(words) - 2)
+        ]
+        trigram_ratio = len(set(trigrams)) / len(trigrams)
+    else:
+        trigram_ratio = 1.0
+
+    # Use the worse of the two signals
+    ratio = min(line_ratio, trigram_ratio)
+
+    if ratio > 0.5:
+        return 1.0
+    if ratio > 0.3:
+        return 0.0
+    return -1.0
+
+
+def strictness_reward(completion: str) -> float:
+    """Penalize extra text outside the code block.
+
+    The system prompt instructs the model to respond ONLY with a JSON code
+    block (plus optional ``<think>`` tags).  Any additional text — preambles
+    like "Here's the JSON:", explanations, bullet-point lists, duplicate
+    code blocks — wastes tokens and violates instructions.
+
+    Measures the fraction of the completion that lies *outside* the first
+    matched code block and any ``<think>`` block.
+
+    Scale:
+      1.0 — clean: nothing extra (0 chars outside)
+      0.5 — trivial: whitespace or up to 10 chars (e.g. a newline)
+      0.0 — minor: any noticeable extra text (> 10 chars)
+     -0.5 — moderate: extra text > 20 % of total
+     -1.0 — severe: more explanation than JSON (> 50 %)
+      0.0 — no code block at all (neutral; format_reward handles this)
+    """
+    stripped = _strip_think_tags(completion).strip()
+    if not stripped:
+        return 0.0
+
+    m = re.search(
+        r"```(?:json)?\s*[\s\S]*?```", stripped, re.IGNORECASE
+    )
+    if not m:
+        return 0.0  # no code block — format_reward already penalises
+
+    remaining = (stripped[: m.start()] + stripped[m.end() :]).strip()
+    extra_len = len(remaining)
+    extra_ratio = extra_len / max(len(stripped), 1)
+
+    if extra_len == 0:
+        return 1.0
+    if extra_len <= 10:
+        return 0.5
+    if extra_ratio < 0.20:
+        return 0.0
+    if extra_ratio < 0.50:
+        return -0.5
+    return -1.0
+
+
 # ---------------------------------------------------------------------------
 # Combined reward and factory
 # ---------------------------------------------------------------------------
@@ -602,6 +702,8 @@ def build_reward_functions(
     weight_schema: float = 0.35,
     weight_reasoning: float = 0.10,
     weight_truncation: float = 0.0,
+    weight_repetition: float = 0.0,
+    weight_strictness: float = 0.0,
     thinking: bool = True,
 ) -> tuple[list[Callable[..., list[float]]], list[float]]:
     """Build separate reward functions + weights for GRPOTrainer multi-reward.
@@ -630,6 +732,12 @@ def build_reward_functions(
         weight_truncation = reward_config.get(
             "weight_truncation", weight_truncation
         )
+        weight_repetition = reward_config.get(
+            "weight_repetition", weight_repetition
+        )
+        weight_strictness = reward_config.get(
+            "weight_strictness", weight_strictness
+        )
 
     if not thinking:
         reasoning_share = weight_reasoning
@@ -641,6 +749,8 @@ def build_reward_functions(
             "validity": weight_validity,
             "schema": weight_schema,
             "truncation": weight_truncation,
+            "repetition": weight_repetition,
+            "strictness": weight_strictness,
         }
         total_remaining = sum(remaining.values())
         if total_remaining > 0 and reasoning_share > 0:
@@ -649,6 +759,8 @@ def build_reward_functions(
             weight_validity += remaining["validity"] * scale
             weight_schema += remaining["schema"] * scale
             weight_truncation += remaining["truncation"] * scale
+            weight_repetition += remaining["repetition"] * scale
+            weight_strictness += remaining["strictness"] * scale
 
     funcs: list[Callable[..., list[float]]] = []
     weights: list[float] = []
@@ -676,6 +788,14 @@ def build_reward_functions(
     if weight_truncation > 0:
         funcs.append(_make_single_reward_fn(truncation_reward))
         weights.append(weight_truncation)
+
+    if weight_repetition > 0:
+        funcs.append(_make_single_reward_fn(repetition_reward))
+        weights.append(weight_repetition)
+
+    if weight_strictness > 0:
+        funcs.append(_make_single_reward_fn(strictness_reward))
+        weights.append(weight_strictness)
 
     names = [f.__name__ for f in funcs]
     weight_strs = [f"{w:.2f}" for w in weights]

@@ -198,6 +198,9 @@ def _print_eval_samples(
     from src.training.rewards import (
         format_reward,
         reasoning_reward,
+        repetition_reward,
+        schema_reward,
+        strictness_reward,
         truncation_reward,
         validity_reward,
     )
@@ -216,8 +219,11 @@ def _print_eval_samples(
         # Per-component rewards
         fmt = format_reward(comp)
         val = validity_reward(comp)
+        sch = schema_reward(comp, prompts[i])
         reas = reasoning_reward(comp)
         trunc = truncation_reward(comp)
+        rep = repetition_reward(comp)
+        strict = strictness_reward(comp)
 
         think, output = _split_think(comp)
 
@@ -240,7 +246,9 @@ def _print_eval_samples(
             print(f"    {line}")
         print(
             f"  REWARDS: format={fmt:+.2f}  validity={val:+.2f}  "
-            f"reasoning={reas:+.2f}  truncation={trunc:+.2f}"
+            f"schema={sch:+.2f}  reasoning={reas:+.2f}  "
+            f"truncation={trunc:+.2f}  repetition={rep:+.2f}  "
+            f"strictness={strict:+.2f}"
         )
     print(f"{'═' * 70}\n")
 
