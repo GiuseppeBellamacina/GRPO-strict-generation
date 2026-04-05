@@ -13,6 +13,15 @@ $REMOTE  = "${CLUSTER_USER}@${CLUSTER_HOST}:~/GRPO-strict-generation"
 $SSH_TARGET = "${CLUSTER_USER}@${CLUSTER_HOST}"
 $LOCAL   = $PSScriptRoot
 
+# Dirs to exclude from download (symlinks on cluster that scp copies as full duplicates)
+$TAR_EXCLUDES = @("--exclude=latest", "--exclude=latest-run")
+
+function Download-RemoteDir($remoteSubpath, $localDest) {
+    New-Item -ItemType Directory -Force -Path $localDest | Out-Null
+    $excludeArgs = $TAR_EXCLUDES -join " "
+    ssh $SSH_TARGET "cd ~/GRPO-strict-generation && tar cf - $excludeArgs $remoteSubpath" | tar xvf - -C "$LOCAL"
+}
+
 function Upload {
     Write-Host "Uploading project to cluster..." -ForegroundColor Cyan
 
@@ -115,8 +124,7 @@ function DownloadLogs {
     # Includes figures/ subfolders inside each experiment dir (e.g. experiments/logs/baseline/figures/)
     Write-Progress -Activity "Download" -Status "Downloading experiments/logs (includes figures)..." -PercentComplete 0
     $dest = Join-Path $LOCAL "experiments\logs"
-    New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -r "${REMOTE}/experiments/logs/." $dest
+    Download-RemoteDir "experiments/logs" $dest
     Write-Progress -Activity "Download" -Completed
     Write-Host "  -> saved to experiments\logs" -ForegroundColor Gray
 }
@@ -124,8 +132,7 @@ function DownloadLogs {
 function DownloadCheckpoints {
     Write-Progress -Activity "Download" -Status "Downloading experiments/checkpoints..." -PercentComplete 0
     $dest = Join-Path $LOCAL "experiments\checkpoints"
-    New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -r "${REMOTE}/experiments/checkpoints/." $dest
+    Download-RemoteDir "experiments/checkpoints" $dest
     Write-Progress -Activity "Download" -Completed
     Write-Host "  -> saved to experiments\checkpoints" -ForegroundColor Gray
 }
@@ -137,7 +144,7 @@ function DownloadWandb {
     # Download from experiments/logs
     $dest = Join-Path $LOCAL "experiments\logs"
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
-    scp -r "${REMOTE}/experiments/logs/." $dest 2>$null
+    Download-RemoteDir "experiments/logs" $dest
 
     Write-Progress -Activity "Download" -Completed
     Write-Host "  -> saved wandb runs to experiments\logs\" -ForegroundColor Gray
