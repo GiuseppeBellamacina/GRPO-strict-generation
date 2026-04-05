@@ -307,6 +307,7 @@ def _extract_completion_samples(
             result.append(f"  {_DIM}{dl}{_RST}")
 
     # Rewards line (per-value coloring: green +, gray 0, red -)
+    # Split across 2 lines: 4/3 with reasoning, 3/3 without
     if rewards_line:
         # Parse "REWARDS: format=+1.00  validity=+0.00  schema=-0.50 ..."
         parts = re.findall(r"(\w+)=([+-]?\d+\.\d+)", rewards_line)
@@ -326,7 +327,13 @@ def _extract_completion_samples(
                     colored_parts.append(
                         f"{_GRAY}{name}={val_str}{_RST}"
                     )
-            result.append(f"  REWARDS: {'  '.join(colored_parts)}")
+            has_reasoning = any(n == "reasoning" for n, _ in parts)
+            split = 4 if has_reasoning else 3
+            row1 = colored_parts[:split]
+            row2 = colored_parts[split:]
+            result.append(f"  REWARDS: {'  '.join(row1)}")
+            if row2:
+                result.append(f"           {'  '.join(row2)}")
         else:
             result.append(f"  {_CYAN}{rewards_line}{_RST}")
 

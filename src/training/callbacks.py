@@ -380,8 +380,14 @@ class CompletionSampleLogger:
             comp = sample["completion"]
             diff = sample.get("difficulty", "?")
             bd = sample["breakdown"]
-            reward_parts = "  ".join(
-                f"{k}={v:+.2f}" for k, v in bd.items()
+            bd_items = list(bd.items())
+            has_reasoning = any(k == "reasoning" for k, _ in bd_items)
+            split = 4 if has_reasoning else 3
+            row1 = "  ".join(
+                f"{k}={v:+.2f}" for k, v in bd_items[:split]
+            )
+            row2 = "  ".join(
+                f"{k}={v:+.2f}" for k, v in bd_items[split:]
             )
             lines.append(f"\n{_SEPARATOR}")
             lines.append(f"  Sample {idx}  [difficulty={diff}]")
@@ -395,7 +401,9 @@ class CompletionSampleLogger:
             lines.append("  OUTPUT:")
             for cl in output.splitlines():
                 lines.append(f"    {cl}")
-            lines.append(f"  REWARDS: {reward_parts}")
+            lines.append(f"  REWARDS: {row1}")
+            if row2:
+                lines.append(f"           {row2}")
             total = sum(
                 self._weight_map.get(k, 0.0) * v
                 for k, v in bd.items()

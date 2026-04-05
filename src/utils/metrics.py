@@ -13,6 +13,7 @@ from typing import Any
 from src.training.rewards import (
     extract_code_block,
     format_reward,
+    reasoning_reward,
     repetition_reward,
     schema_reward,
     strictness_reward,
@@ -136,6 +137,7 @@ def compute_reward_breakdown(
         "format": 0.0,
         "validity": 0.0,
         "schema": 0.0,
+        "reasoning": 0.0,
         "truncation": 0.0,
         "repetition": 0.0,
         "strictness": 0.0,
@@ -147,6 +149,7 @@ def compute_reward_breakdown(
         sums["schema"] += schema_reward(
             comp, prompt, raw_prompt=raw_p
         )
+        sums["reasoning"] += reasoning_reward(comp)
         sums["truncation"] += truncation_reward(comp)
         sums["repetition"] += repetition_reward(comp)
         sums["strictness"] += strictness_reward(comp)

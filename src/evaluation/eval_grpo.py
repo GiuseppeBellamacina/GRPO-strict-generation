@@ -252,8 +252,10 @@ def _print_eval_samples(
             print(f"    {line}")
         print(
             f"  REWARDS: format={fmt:+.2f}  validity={val:+.2f}  "
-            f"schema={sch:+.2f}  reasoning={reas:+.2f}  "
-            f"truncation={trunc:+.2f}  repetition={rep:+.2f}  "
+            f"schema={sch:+.2f}  reasoning={reas:+.2f}"
+        )
+        print(
+            f"           truncation={trunc:+.2f}  repetition={rep:+.2f}  "
             f"strictness={strict:+.2f}"
         )
     print(f"{'═' * 70}\n")
@@ -886,6 +888,7 @@ def main() -> None:
         "format": reward_weights_cfg.get("weight_format", 0.20),
         "validity": reward_weights_cfg.get("weight_validity", 0.35),
         "schema": reward_weights_cfg.get("weight_schema", 0.35),
+        "reasoning": reward_weights_cfg.get("weight_reasoning", 0.10),
         "truncation": reward_weights_cfg.get(
             "weight_truncation", 0.0
         ),
