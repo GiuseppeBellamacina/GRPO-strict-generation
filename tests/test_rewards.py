@@ -2,7 +2,6 @@
 
 from src.training.rewards import (
     build_reward_functions,
-    combined_reward,
     extract_code_block,
     format_reward,
     reasoning_reward,
@@ -201,6 +200,66 @@ class TestSchemaReward:
         instr = 'Object with "id" (integer) and "name" (string).'
         assert schema_reward(text, instr) == 1.0
 
+    # --- key_types tests ---
+
+    def test_key_types_all_correct(self):
+        """key_types: all values have correct types → 1.0."""
+        instr = '[SCHEMA:{"keys":["name","age","active"],"toplevel":"object","key_types":{"name":"string","age":"integer","active":"boolean"}}]'
+        text = '```json\n{"name": "Alice", "age": 30, "active": true}\n```'
+        assert schema_reward(text, instr) == 1.0
+
+    def test_key_types_wrong_types(self):
+        """key_types: wrong value types penalised."""
+        instr = '[SCHEMA:{"keys":["name","age"],"toplevel":"object","key_types":{"name":"string","age":"integer"}}]'
+        good = '```json\n{"name": "Alice", "age": 30}\n```'
+        bad = '```json\n{"name": 42, "age": "thirty"}\n```'
+        assert schema_reward(good, instr) > schema_reward(bad, instr)
+
+    def test_key_types_partial_correct(self):
+        """key_types: one correct, one wrong → partial score."""
+        instr = '[SCHEMA:{"keys":["name","age"],"toplevel":"object","key_types":{"name":"string","age":"integer"}}]'
+        text = '```json\n{"name": "Alice", "age": "thirty"}\n```'
+        # keys=1.0, key_types=0.5, toplevel=1.0 → avg = 0.833
+        score = schema_reward(text, instr)
+        assert 0.5 < score < 1.0
+
+    def test_key_types_array_and_object(self):
+        """key_types: array and object types validated correctly."""
+        instr = '[SCHEMA:{"keys":["tags","meta"],"toplevel":"object","key_types":{"tags":"array","meta":"object"}}]'
+        good = '```json\n{"tags": ["a", "b"], "meta": {"x": 1}}\n```'
+        bad = '```json\n{"tags": "not-array", "meta": "not-object"}\n```'
+        assert schema_reward(good, instr) == 1.0
+        assert schema_reward(good, instr) > schema_reward(bad, instr)
+
+    def test_key_types_boolean_not_integer(self):
+        """key_types: boolean must not be treated as integer (Python subclass)."""
+        instr = '[SCHEMA:{"keys":["flag"],"toplevel":"object","key_types":{"flag":"integer"}}]'
+        good = '```json\n{"flag": 42}\n```'
+        bad = '```json\n{"flag": true}\n```'
+        assert schema_reward(good, instr) > schema_reward(bad, instr)
+
+    # --- item_key_types tests ---
+
+    def test_item_key_types_all_correct(self):
+        """item_key_types: correct types in every item → 1.0."""
+        instr = '[SCHEMA:{"toplevel":"array","count":2,"item_keys":["name","value"],"item_key_types":{"name":"string","value":"integer"}}]'
+        text = '```json\n[{"name":"a","value":1},{"name":"b","value":2}]\n```'
+        assert schema_reward(text, instr) == 1.0
+
+    def test_item_key_types_wrong_types(self):
+        """item_key_types: wrong types penalised."""
+        instr = '[SCHEMA:{"toplevel":"array","count":2,"item_keys":["name","value"],"item_key_types":{"name":"string","value":"integer"}}]'
+        good = '```json\n[{"name":"a","value":1},{"name":"b","value":2}]\n```'
+        bad = '```json\n[{"name":1,"value":"x"},{"name":2,"value":"y"}]\n```'
+        assert schema_reward(good, instr) > schema_reward(bad, instr)
+
+    def test_item_key_types_nested_object(self):
+        """item_key_types: object type validated in items."""
+        instr = '[SCHEMA:{"toplevel":"array","count":1,"item_keys":["id","config"],"item_key_types":{"config":"object"}}]'
+        good = '```json\n[{"id":"a","config":{"k":1}}]\n```'
+        bad = '```json\n[{"id":"a","config":"flat-string"}]\n```'
+        assert schema_reward(good, instr) > schema_reward(bad, instr)
+
 
 class TestReasoningReward:
     def test_with_long_reasoning(self):
@@ -235,50 +294,6 @@ class TestReasoningReward:
         content = "A" * 500
         text = f"<think>{content}</think>"
         assert reasoning_reward(text) == 1.0
-
-
-class TestCombinedReward:
-    def test_valid_json_no_instruction(self):
-        # format=1.0, validity=1.0, schema=1.0, reasoning=-0.5 (no think)
-        text = '```json\n{"x": 1}\n```'
-        assert combined_reward(text) == pytest.approx(
-            0.20 * 1.0 + 0.35 * 1.0 + 0.35 * 1.0 + 0.10 * (-0.5)
-        )
-
-    def test_no_code_block(self):
-        # format=0, validity=0, schema=0, reasoning=-0.5
-        assert combined_reward("plain text") == pytest.approx(
-            0.10 * (-0.5)
-        )
-
-    def test_with_reasoning(self):
-        think_content = (
-            "I need to generate a valid JSON object with the required keys and types. "
-            "Let me plan: first I will create the outer object, then add each key with "
-            "the correct type as specified in the instruction. I should double-check the structure."
-        )
-        text = (
-            f"<think>{think_content}</think>\n"
-            '```json\n{"a": 1}\n```'
-        )
-        # think_content is >200 chars → reasoning_reward=1.0
-        assert combined_reward(text) == pytest.approx(
-            0.20 + 0.35 + 0.35 + 0.10
-        )
-
-    def test_custom_weights(self):
-        text = '```json\n{"x": 1}\n```'
-        score = combined_reward(
-            text,
-            weight_format=0.25,
-            weight_validity=0.25,
-            weight_schema=0.25,
-            weight_reasoning=0.25,
-        )
-        # reasoning=-0.5 for no think
-        assert score == pytest.approx(
-            0.25 + 0.25 + 0.25 + 0.25 * (-0.5)
-        )
 
 
 import pytest  # noqa: E402  (import after class defs to keep test grouping)

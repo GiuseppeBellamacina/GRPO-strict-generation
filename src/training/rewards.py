@@ -163,6 +163,28 @@ def _collect_all_keys(obj: Any) -> set[str]:
     return keys
 
 
+def _check_json_type(value: Any, expected_type: str) -> bool:
+    """Check if a JSON value matches the expected type string.
+
+    Supported types: string, integer, number, boolean, array, object.
+    """
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(
+            value, bool
+        )
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    return True  # unknown type — don't penalise
+
+
 # ---------------------------------------------------------------------------
 # Constraint extraction from natural-language instructions
 # ---------------------------------------------------------------------------
@@ -326,9 +348,15 @@ def schema_reward(
       1. Exact array/item count
       2. Minimum count
       3. Required top-level keys  (strict when from registry, lenient when from regex)
+     3b. Key types (value types for top-level keys)  — *registry-only*
       4. Item keys (arrays of objects)  — *registry-only*
+     4b. Item enum constraints (field values in allowed set)  — *registry-only*
+     4c. Item min count (each item has ≥N fields)  — *registry-only*
+     4d. Item nested keys (sub-keys within nested objects in items)  — *registry-only*
+     4e. Item key types (value types for item-level keys)  — *registry-only*
       5. Nesting depth
       6. Top-level type (array vs object)
+      7. Nested min count (named top-level key has ≥N entries)  — *registry-only*
 
     Returns 0.0 if JSON is unparseable.
     Returns 1.0 if the JSON is valid but no constraints can be extracted.
@@ -347,6 +375,9 @@ def schema_reward(
     ) or _lookup_schema(instruction)
     scores: list[float] = []
 
+    # Resolve array_key early — used by count and item_keys checks
+    _array_key = schema.get("array_key", "") if schema else ""
+
     # 1. Exact count — from tag or regex
     exact = (
         schema.get("count")
@@ -354,9 +385,14 @@ def schema_reward(
         else _extract_exact_count(instruction)
     )
     if exact is not None:
-        lengths = _collect_array_lengths(parsed)
-        if not lengths and isinstance(parsed, dict):
-            lengths.append(len(parsed))
+        if _array_key and isinstance(parsed, dict):
+            # Count items in the named array
+            val = parsed.get(_array_key)
+            lengths = [len(val)] if isinstance(val, list) else []
+        else:
+            lengths = _collect_array_lengths(parsed)
+            if not lengths and isinstance(parsed, dict):
+                lengths.append(len(parsed))
         if lengths:
             closest = min(lengths, key=lambda n: abs(n - exact))
             diff = abs(closest - exact)
@@ -405,19 +441,151 @@ def schema_reward(
             present = sum(1 for k in req_keys if k in all_keys)
             scores.append(present / len(req_keys))
 
+    # 3b. Key types — check value types for top-level keys
+    #     Only scores keys that are present (check 3 already penalises
+    #     missing keys, so no double-counting).
+    _key_types: dict[str, str] = (
+        schema.get("key_types", {}) if schema else {}
+    )
+    if _key_types and isinstance(parsed, dict):
+        kt_checks = 0
+        kt_correct = 0
+        for key, expected_type in _key_types.items():
+            if key in parsed:
+                kt_checks += 1
+                if _check_json_type(parsed[key], expected_type):
+                    kt_correct += 1
+        if kt_checks > 0:
+            scores.append(kt_correct / kt_checks)
+
     # 4. Item keys — only from schema tag (for arrays of objects)
+    #    Supports two layouts:
+    #    a) toplevel is array: check item_keys on each top-level item
+    #    b) array_key specified: find the named array inside the object,
+    #       then check item_keys on its items
     item_keys: list[str] = (
         schema.get("item_keys", []) if schema else []
     )
-    if item_keys and isinstance(parsed, list) and len(parsed) > 0:
+    item_enums: dict[str, list[str]] = (
+        schema.get("item_enums", {}) if schema else {}
+    )
+    _item_min: int | None = (
+        schema.get("item_min_count") if schema else None
+    )
+    _item_nested: dict[str, list[str]] = (
+        schema.get("item_nested_keys", {}) if schema else {}
+    )
+    _item_key_types: dict[str, str] = (
+        schema.get("item_key_types", {}) if schema else {}
+    )
+    target_array: list[Any] | None = None
+    if (
+        item_keys
+        or item_enums
+        or _item_min is not None
+        or _item_nested
+        or _item_key_types
+    ):
+        array_key = schema.get("array_key", "") if schema else ""
+        if array_key and isinstance(parsed, dict):
+            val = parsed.get(array_key)
+            if isinstance(val, list):
+                target_array = val
+        elif isinstance(parsed, list):
+            target_array = parsed
+        elif isinstance(parsed, dict):
+            # No array_key specified — find the first array value
+            for v in parsed.values():
+                if isinstance(v, list) and len(v) > 0:
+                    target_array = v
+                    break
+
+    if item_keys and target_array and len(target_array) > 0:
         item_scores: list[float] = []
-        for item in parsed:
+        for item in target_array:
             if isinstance(item, dict):
                 present = sum(1 for k in item_keys if k in item)
                 item_scores.append(present / len(item_keys))
             else:
                 item_scores.append(0.0)
         scores.append(sum(item_scores) / len(item_scores))
+
+    # 4b. Item enum constraints — check field values are in allowed set
+    #     Only scores items where the enum field is present (item_keys
+    #     already handles missing-key penalisation, no double-counting).
+    if item_enums and target_array and len(target_array) > 0:
+        enum_scores: list[float] = []
+        for item in target_array:
+            if isinstance(item, dict):
+                checks = 0
+                valid = 0
+                for field, allowed in item_enums.items():
+                    if field in item:
+                        checks += 1
+                        if item[field] in allowed:
+                            valid += 1
+                if checks > 0:
+                    enum_scores.append(valid / checks)
+            # Items that are not dicts or lack the enum field are
+            # silently skipped — item_keys already penalises them.
+        if enum_scores:
+            scores.append(sum(enum_scores) / len(enum_scores))
+
+    # 4c. Item min count — each item must have at least N fields
+    if (
+        _item_min is not None
+        and target_array
+        and len(target_array) > 0
+    ):
+        imc_scores: list[float] = []
+        for item in target_array:
+            if isinstance(item, dict):
+                imc_scores.append(min(len(item) / _item_min, 1.0))
+            else:
+                imc_scores.append(0.0)
+        scores.append(sum(imc_scores) / len(imc_scores))
+
+    # 4d. Item nested keys — sub-keys within nested objects in each item
+    #     Schema: {"position": ["x", "y", "w", "h"]}
+    #     Checks that item["position"] is a dict containing those keys.
+    if _item_nested and target_array and len(target_array) > 0:
+        ink_scores: list[float] = []
+        for item in target_array:
+            if not isinstance(item, dict):
+                ink_scores.append(0.0)
+                continue
+            checks = 0
+            present = 0
+            for nested_key, sub_keys in _item_nested.items():
+                sub_obj = item.get(nested_key)
+                if isinstance(sub_obj, dict):
+                    for sk in sub_keys:
+                        checks += 1
+                        if sk in sub_obj:
+                            present += 1
+                else:
+                    checks += len(sub_keys)
+            ink_scores.append(present / checks if checks > 0 else 0.0)
+        scores.append(sum(ink_scores) / len(ink_scores))
+
+    # 4e. Item key types — check value types for keys in each item
+    #     Only scores keys that are present (item_keys already penalises
+    #     missing keys, so no double-counting).
+    if _item_key_types and target_array and len(target_array) > 0:
+        ikt_scores: list[float] = []
+        for item in target_array:
+            if not isinstance(item, dict):
+                ikt_scores.append(0.0)
+                continue
+            checks = 0
+            correct = 0
+            for key, expected_type in _item_key_types.items():
+                if key in item:
+                    checks += 1
+                    if _check_json_type(item[key], expected_type):
+                        correct += 1
+            ikt_scores.append(correct / checks if checks > 0 else 1.0)
+        scores.append(sum(ikt_scores) / len(ikt_scores))
 
     # 5. Nesting depth — from tag or regex
     req_depth = (
@@ -443,6 +611,22 @@ def schema_reward(
             scores.append(1.0 if isinstance(parsed, list) else 0.0)
         elif tl is False:
             scores.append(1.0 if isinstance(parsed, dict) else 0.0)
+
+    # 7. Nested min count — named top-level keys must have ≥N entries
+    _nested_mc: dict[str, int] = (
+        schema.get("nested_min_count", {}) if schema else {}
+    )
+    if _nested_mc and isinstance(parsed, dict):
+        nmc_scores: list[float] = []
+        for nkey, nmin in _nested_mc.items():
+            sub = parsed.get(nkey)
+            if isinstance(sub, dict):
+                nmc_scores.append(min(len(sub) / nmin, 1.0))
+            elif isinstance(sub, list):
+                nmc_scores.append(min(len(sub) / nmin, 1.0))
+            else:
+                nmc_scores.append(0.0)
+        scores.append(sum(nmc_scores) / len(nmc_scores))
 
     return sum(scores) / len(scores) if scores else 1.0
 
@@ -510,7 +694,12 @@ def truncation_reward(completion: str) -> float:
         # double-penalise.
         return 0.0
 
-    # Bare JSON detected — check for truncation signals
+    # Bare JSON detected — if it parses, it's definitely not truncated.
+    parsed, _ = _parse_json_safe(stripped)
+    if parsed is not None:
+        return 1.0
+
+    # Parse failed — check for specific truncation signals
     # Count unmatched structural characters
     open_braces = stripped.count("{") - stripped.count("}")
     open_brackets = stripped.count("[") - stripped.count("]")
@@ -645,144 +834,6 @@ def strictness_reward(completion: str) -> float:
 # ---------------------------------------------------------------------------
 # Combined reward and factory
 # ---------------------------------------------------------------------------
-
-
-def combined_reward(
-    completion: str,
-    instruction: str = "",
-    *,
-    weight_format: float = 0.20,
-    weight_validity: float = 0.35,
-    weight_schema: float = 0.35,
-    weight_reasoning: float = 0.10,
-) -> float:
-    """Combine all reward components into a single scalar in [0.0, 1.0].
-
-    All four components contribute additively so the function always
-    produces a real signal rather than collapsing to 0 when no code block
-    is present.  This is critical for GRPO: if every completion in the
-    group scored 0 (hard gate triggered for all), the group advantage
-    std = 0 and the policy gradient is exactly 0 — the model never learns
-    to produce code blocks.
-
-    Without a code block:
-      * ``format_reward`` → 0.0  (no penalty elsewhere)
-      * ``validity_reward`` / ``schema_reward`` still try the raw text
-        fallback (``extract_code_block`` parses bare ``{``/``[`` text),
-        so completions containing raw valid JSON still receive partial
-        credit and create the variance GRPO needs.
-      * A generic ``` block (format=0.5) penalises only the format share.
-    """
-    return (
-        weight_format * format_reward(completion)
-        + weight_validity * validity_reward(completion)
-        + weight_schema * schema_reward(completion, instruction)
-        + weight_reasoning * reasoning_reward(completion)
-    )
-
-
-def build_reward_function(
-    reward_config: dict[str, Any] | None = None,
-    *,
-    weight_format: float = 0.20,
-    weight_validity: float = 0.35,
-    weight_schema: float = 0.35,
-    weight_reasoning: float = 0.10,
-    thinking: bool = True,
-) -> Callable[..., list[float]]:
-    """Build a reward function compatible with trl GRPOTrainer.
-
-    GRPOTrainer calls: ``reward_fn(completions, prompts=None, **kwargs) -> list[float]``
-
-    The ``prompts`` argument (list of chat-message dicts or plain strings) is
-    used to extract the user instruction for structural-compliance checking.
-
-    Args:
-        reward_config: If provided, read weights from this dict (keys:
-            ``weight_format``, ``weight_validity``, ``weight_schema``,
-            ``weight_reasoning``).  Any key absent in the dict falls back to
-            the keyword-argument default.
-        weight_format: Fraction of score from format check.
-        weight_validity: Fraction of score from JSON validity.
-        weight_schema: Fraction of score from structural compliance.
-        weight_reasoning: Fraction of score from reasoning tags.
-        thinking: If False, ``weight_reasoning`` is forced to 0 and its
-            share is redistributed proportionally to validity and schema,
-            so the weights always sum to 1.0.
-    """
-    if reward_config is not None:
-        weight_format = reward_config.get(
-            "weight_format", weight_format
-        )
-        weight_validity = reward_config.get(
-            "weight_validity", weight_validity
-        )
-        weight_schema = reward_config.get(
-            "weight_schema", weight_schema
-        )
-        weight_reasoning = reward_config.get(
-            "weight_reasoning", weight_reasoning
-        )
-
-    if not thinking:
-        # Redistribute the reasoning share to validity and schema proportionally
-        reasoning_share = weight_reasoning
-        weight_reasoning = 0.0
-        total_vs = weight_validity + weight_schema
-        if total_vs > 0:
-            weight_validity += reasoning_share * (
-                weight_validity / total_vs
-            )
-            weight_schema += reasoning_share * (
-                weight_schema / total_vs
-            )
-
-    print(
-        f"Reward weights — format={weight_format:.2f} validity={weight_validity:.2f} "
-        f"schema={weight_schema:.2f} reasoning={weight_reasoning:.2f} "
-        f"(thinking={'on' if thinking else 'off'})"
-    )
-
-    def _instruction_from_prompt(prompt: Any) -> str:
-        if isinstance(prompt, list):
-            for msg in reversed(prompt):
-                if (
-                    isinstance(msg, dict)
-                    and msg.get("role") == "user"
-                ):
-                    return msg.get("content", "")
-        return str(prompt) if prompt is not None else ""
-
-    def reward_fn(
-        completions: list[Any],
-        prompts: list[Any] | None = None,
-        **kwargs: Any,
-    ) -> list[float]:
-        instructions = (
-            [_instruction_from_prompt(p) for p in prompts]
-            if prompts
-            else [""] * len(completions)
-        )
-        rewards: list[float] = []
-        for completion, instruction in zip(completions, instructions):
-            text: str = (
-                completion[0]["content"]
-                if isinstance(completion, list)
-                else completion
-            )
-            rewards.append(
-                combined_reward(
-                    text,
-                    instruction,
-                    weight_format=weight_format,
-                    weight_validity=weight_validity,
-                    weight_schema=weight_schema,
-                    weight_reasoning=weight_reasoning,
-                )
-            )
-        return rewards
-
-    return reward_fn
 
 
 def _make_single_reward_fn(

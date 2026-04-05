@@ -1,6 +1,7 @@
 """Evaluation metrics for strict JSON generation.
 
-Computes Pass@k, error type distribution, and per-task breakdowns.
+Computes Pass@k, error type distribution, per-task breakdowns,
+and per-component reward analysis.
 """
 
 from __future__ import annotations
@@ -9,7 +10,15 @@ import json
 from collections import Counter
 from typing import Any
 
-from src.training.rewards import extract_code_block
+from src.training.rewards import (
+    extract_code_block,
+    format_reward,
+    repetition_reward,
+    schema_reward,
+    strictness_reward,
+    truncation_reward,
+    validity_reward,
+)
 
 
 def check_syntax(completion: str) -> tuple[bool, str]:
@@ -107,3 +116,39 @@ def compute_detailed_metrics(
         }
 
     return result
+
+
+def compute_reward_breakdown(
+    completions: list[str],
+    prompts: list[str],
+    raw_prompts: list[str] | None = None,
+) -> dict[str, float]:
+    """Compute the average score for each reward component.
+
+    Returns a dict mapping component name to mean score across all
+    completions (unweighted — raw per-component averages).
+    """
+    if raw_prompts is None:
+        raw_prompts = prompts
+
+    n = len(completions)
+    sums = {
+        "format": 0.0,
+        "validity": 0.0,
+        "schema": 0.0,
+        "truncation": 0.0,
+        "repetition": 0.0,
+        "strictness": 0.0,
+    }
+
+    for comp, prompt, raw_p in zip(completions, prompts, raw_prompts):
+        sums["format"] += format_reward(comp)
+        sums["validity"] += validity_reward(comp)
+        sums["schema"] += schema_reward(
+            comp, prompt, raw_prompt=raw_p
+        )
+        sums["truncation"] += truncation_reward(comp)
+        sums["repetition"] += repetition_reward(comp)
+        sums["strictness"] += strictness_reward(comp)
+
+    return {k: v / max(n, 1) for k, v in sums.items()}

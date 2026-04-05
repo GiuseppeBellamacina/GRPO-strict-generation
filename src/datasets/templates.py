@@ -62,6 +62,11 @@ SIMPLE: list[Template] = [
         "schema": lambda p: {
             "keys": [p["k1"], p["k2"], p["k3"]],
             "toplevel": "object",
+            "key_types": {
+                p["k1"]: "string",
+                p["k2"]: "integer",
+                p["k3"]: "boolean",
+            },
         },
     },
     {
@@ -104,6 +109,8 @@ SIMPLE: list[Template] = [
             "keys": [p["k1"], p["k2"]],
             "toplevel": "object",
             "count": p["n"],
+            "array_key": p["k2"],
+            "key_types": {p["k1"]: "string", p["k2"]: "array"},
         },
     },
     {
@@ -162,6 +169,11 @@ SIMPLE: list[Template] = [
         "schema": lambda p: {
             "keys": [p["k1"], p["k2"], p["k3"]],
             "toplevel": "object",
+            "key_types": {
+                p["k1"]: "string",
+                p["k2"]: p["t2"],
+                p["k3"]: p["t3"],
+            },
         },
     },
     {
@@ -182,6 +194,7 @@ SIMPLE: list[Template] = [
             "toplevel": "array",
             "count": p["n"],
             "item_keys": [p["k1"], p["k2"]],
+            "item_key_types": {p["k1"]: "string", p["k2"]: "integer"},
         },
     },
     {
@@ -205,6 +218,8 @@ SIMPLE: list[Template] = [
             "keys": [p["k1"], p["k2"]],
             "toplevel": "object",
             "count": p["n"],
+            "array_key": p["k2"],
+            "key_types": {p["k1"]: "string", p["k2"]: "array"},
         },
     },
     {
@@ -272,6 +287,12 @@ MEDIUM: list[Template] = [
             "toplevel": "array",
             "count": p["n"],
             "item_keys": [p["k1"], p["k2"], p["k3"]],
+            "item_nested_keys": {p["k3"]: [p["nk1"], p["nk2"]]},
+            "item_key_types": {
+                p["k1"]: "string",
+                p["k2"]: "integer",
+                p["k3"]: "object",
+            },
         },
     },
     {
@@ -370,6 +391,9 @@ MEDIUM: list[Template] = [
         },
         "schema": lambda p: {
             "toplevel": "object",
+            "count": p["n"],
+            "array_key": p["sub_entity"],
+            "item_min_count": 3,
         },
     },
     {
@@ -403,6 +427,7 @@ MEDIUM: list[Template] = [
         "schema": lambda p: {
             "keys": [p["s1"], p["s2"], p["s3"]],
             "toplevel": "object",
+            "nested_min_count": {p["s1"]: 2, p["s2"]: 2, p["s3"]: 2},
         },
     },
     {
@@ -429,6 +454,17 @@ MEDIUM: list[Template] = [
         "schema": lambda p: {
             "keys": [p["k1"], p["k2"], p["k3"]],
             "toplevel": "object",
+            "array_key": p["k3"],
+            "item_keys": [p["nk1"], p["nk2"]],
+            "key_types": {
+                p["k1"]: "string",
+                p["k2"]: "string",
+                p["k3"]: "array",
+            },
+            "item_key_types": {
+                p["nk1"]: "string",
+                p["nk2"]: "number",
+            },
         },
     },
     {
@@ -453,6 +489,16 @@ MEDIUM: list[Template] = [
         },
         "schema": lambda p: {
             "toplevel": "object",
+            "count": p["n"],
+            "item_keys": ["label", "type", "required"],
+            "item_enums": {
+                "type": ["text", "number", "email", "select"]
+            },
+            "item_key_types": {
+                "label": "string",
+                "type": "string",
+                "required": "boolean",
+            },
         },
     },
     {
@@ -478,6 +524,13 @@ MEDIUM: list[Template] = [
         "schema": lambda p: {
             "keys": ["id", "name", "tags", "metadata"],
             "toplevel": "object",
+            "nested_min_count": {"metadata": 3},
+            "key_types": {
+                "id": "integer",
+                "name": "string",
+                "tags": "array",
+                "metadata": "object",
+            },
         },
     },
 ]
@@ -542,6 +595,16 @@ HARD: list[Template] = [
                 "results",
             ],
             "toplevel": "object",
+            "count": p["n"],
+            "array_key": "results",
+            "item_min_count": p["f"],
+            "key_types": {
+                "page": "integer",
+                "per_page": "integer",
+                "total": "integer",
+                "total_pages": "integer",
+                "results": "array",
+            },
         },
     },
     {
@@ -566,6 +629,11 @@ HARD: list[Template] = [
             "keys": ["name", "id", "children"],
             "toplevel": "object",
             "depth": 4,
+            "key_types": {
+                "name": "string",
+                "id": "integer",
+                "children": "array",
+            },
         },
     },
     {
@@ -614,6 +682,9 @@ HARD: list[Template] = [
         "schema": lambda p: {
             "toplevel": "object",
             "min_count": p["n"],
+            "item_keys": ["id", "name", "type", "config", "next"],
+            "item_enums": {"type": ["action", "condition", "loop"]},
+            "item_key_types": {"config": "object"},
         },
     },
     {
@@ -629,6 +700,25 @@ HARD: list[Template] = [
         },
         "schema": lambda p: {
             "toplevel": "object",
+            "count": p["n"],
+            "item_keys": [
+                "id",
+                "type",
+                "title",
+                "position",
+                "data_source",
+            ],
+            "item_enums": {
+                "type": ["chart", "table", "metric", "map"]
+            },
+            "item_nested_keys": {
+                "position": ["x", "y", "w", "h"],
+                "data_source": [
+                    "endpoint",
+                    "params",
+                    "refresh_interval",
+                ],
+            },
         },
     },
     {
@@ -663,6 +753,7 @@ HARD: list[Template] = [
                 "data",
             ],
             "toplevel": "object",
+            "nested_min_count": {"data": p["n"]},
         },
     },
     {
@@ -678,6 +769,22 @@ HARD: list[Template] = [
         },
         "schema": lambda p: {
             "toplevel": "object",
+            "count": p["n"],
+            "item_keys": ["order", "type", "table", "definition"],
+            "item_enums": {
+                "type": [
+                    "create_table",
+                    "add_column",
+                    "create_index",
+                    "add_constraint",
+                ]
+            },
+            "item_key_types": {
+                "order": "integer",
+                "type": "string",
+                "table": "string",
+                "definition": "object",
+            },
         },
     },
 ]

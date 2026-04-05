@@ -35,7 +35,11 @@ from src.models.model_loader import (
     load_tokenizer,
 )
 from src.utils.config import load_config
-from src.utils.metrics import check_syntax, compute_detailed_metrics
+from src.utils.metrics import (
+    check_syntax,
+    compute_detailed_metrics,
+    compute_reward_breakdown,
+)
 from src.utils.visualization import (
     plot_baseline_vs_grpo_comparison,
     plot_completion_length_distribution,
@@ -44,6 +48,7 @@ from src.utils.visualization import (
     plot_error_evolution,
     plot_per_category_breakdown,
     plot_rescued_vs_regressed,
+    plot_reward_breakdown,
     plot_stage_difficulty_heatmap,
 )
 
@@ -523,6 +528,7 @@ def main() -> None:
 
     all_eval_results: list[dict] = []
     all_completions_data: dict[str, list[dict]] = {}
+    all_raw_completions: dict[str, list[str]] = {}
 
     for label, model_path, is_ckpt in eval_targets:
         print(f"\n{'='*50}")
@@ -594,6 +600,7 @@ def main() -> None:
         )
         print(f"Completions saved to {compl_path}")
         all_completions_data[label] = completions_data
+        all_raw_completions[label] = completions
 
         # Per-model figures
         fig_path = str(figures_dir / f"pass_rates_{safe_name}.png")
@@ -690,6 +697,7 @@ def main() -> None:
             )
             print(f"Baseline completions saved to {bl_compl_path}")
             all_completions_data["Baseline"] = bl_compl_data
+            all_raw_completions["Baseline"] = baseline_completions
 
     if baseline_metrics:
         model_name = config["model"]["name"].split("/")[-1]
@@ -870,6 +878,56 @@ def main() -> None:
             wandb.log(
                 {"eval/rescued_vs_regressed": wandb.Image(rr_path)}
             )
+
+    # ── Reward component breakdown chart ──────────────────────────────────
+    # Build breakdown for every evaluated model (and baseline if available).
+    reward_weights_cfg = config.get("grpo", {}).get("reward", {})
+    rw_map = {
+        "format": reward_weights_cfg.get("weight_format", 0.20),
+        "validity": reward_weights_cfg.get("weight_validity", 0.35),
+        "schema": reward_weights_cfg.get("weight_schema", 0.35),
+        "truncation": reward_weights_cfg.get(
+            "weight_truncation", 0.0
+        ),
+        "repetition": reward_weights_cfg.get(
+            "weight_repetition", 0.0
+        ),
+        "strictness": reward_weights_cfg.get(
+            "weight_strictness", 0.0
+        ),
+    }
+    # Only include components with non-zero weight in the chart
+    active_rw = {k: v for k, v in rw_map.items() if v > 0}
+
+    stage_breakdowns: list[dict] = []
+    bd_order: list[str] = []
+
+    if "Baseline" in all_raw_completions:
+        bd_order.append("Baseline")
+    for r in all_eval_results:
+        bd_order.append(r["label"])
+
+    for lbl in bd_order:
+        if lbl not in all_raw_completions:
+            continue
+        comps = all_raw_completions[lbl]
+        breakdown = compute_reward_breakdown(comps, prompts, prompts)
+        # Filter to active components only
+        filtered = {
+            k: v for k, v in breakdown.items() if k in active_rw
+        }
+        stage_breakdowns.append({"label": lbl, "scores": filtered})
+
+    if stage_breakdowns:
+        model_name_bd = config["model"]["name"].split("/")[-1]
+        bd_fig_path = str(figures_dir / "reward_breakdown.png")
+        plot_reward_breakdown(
+            stage_breakdowns,
+            reward_weights=active_rw,
+            model_name=model_name_bd,
+            output_path=bd_fig_path,
+        )
+        wandb.log({"eval/reward_breakdown": wandb.Image(bd_fig_path)})
 
     wandb.finish()
     print("\nEvaluation complete!")

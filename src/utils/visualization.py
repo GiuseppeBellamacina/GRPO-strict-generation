@@ -7,10 +7,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from typing_extensions import Any
 
 
 def plot_per_category_breakdown(
-    detailed_metrics: dict,
+    detailed_metrics: dict[str, Any],
     title: str = "Pass Rate by Task Type and Difficulty",
     output_path: str = "experiments/logs/figures/per_category_breakdown.png",
 ) -> None:
@@ -615,6 +616,166 @@ def plot_stage_difficulty_heatmap(
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_path}")
+
+
+def plot_reward_breakdown(
+    stage_breakdowns: list[dict],
+    reward_weights: dict[str, float] | None = None,
+    model_name: str = "",
+    output_path: str = "experiments/logs/figures/reward_breakdown.png",
+) -> None:
+    """Stacked bar chart showing weighted reward contributions per stage.
+
+    Each bar is composed of segments (one per reward component).  The height
+    of each segment equals ``weight_i * avg_score_i``, i.e. the effective
+    contribution of that component to the total weighted reward.  Components
+    that can go negative (truncation, repetition, strictness) may produce
+    downward segments.
+
+    Args:
+        stage_breakdowns: List of dicts, each with:
+            - ``"label"`` : stage display name (e.g. "Baseline", "Stage 1: format_basics")
+            - ``"scores"`` : dict mapping component name → average raw score
+        reward_weights: Optional mapping of component name → weight.  If
+            ``None``, all components are shown with equal weight (1.0).
+        model_name: Short model name for the figure title.
+        output_path: Where to save the figure.
+    """
+    sns.set_theme(style="whitegrid")
+
+    if not stage_breakdowns:
+        print("No reward breakdown data to plot.")
+        return
+
+    # Component ordering and colors — keep consistent across charts
+    component_order = [
+        "format",
+        "validity",
+        "schema",
+        "truncation",
+        "repetition",
+        "strictness",
+    ]
+    component_colors = {
+        "format": "#4C72B0",
+        "validity": "#55A868",
+        "schema": "#C44E52",
+        "truncation": "#8172B2",
+        "repetition": "#CCB974",
+        "strictness": "#64B5CD",
+    }
+
+    # Determine which components actually have data
+    all_components = set()
+    for sb in stage_breakdowns:
+        all_components.update(sb["scores"].keys())
+    components = [c for c in component_order if c in all_components]
+
+    if reward_weights is None:
+        reward_weights = {c: 1.0 for c in components}
+
+    stage_labels = [sb["label"] for sb in stage_breakdowns]
+    n_stages = len(stage_labels)
+
+    # Compute weighted contributions: weight_i * avg_score_i
+    weighted: dict[str, list[float]] = {c: [] for c in components}
+    totals: list[float] = []
+    for sb in stage_breakdowns:
+        total = 0.0
+        for c in components:
+            w = reward_weights.get(c, 0.0)
+            val = sb["scores"].get(c, 0.0) * w
+            weighted[c].append(val)
+            total += val
+        totals.append(total)
+
+    x = np.arange(n_stages)
+    fig, ax = plt.subplots(figsize=(max(8, n_stages * 2.2), 6))
+
+    # Split positive and negative contributions for proper stacking
+    pos_bottom = np.zeros(n_stages)
+    neg_bottom = np.zeros(n_stages)
+
+    for c in components:
+        values = np.array(weighted[c])
+        pos_vals = np.where(values >= 0, values, 0)
+        neg_vals = np.where(values < 0, values, 0)
+        color = component_colors.get(c, "#999999")
+
+        w_val = reward_weights.get(c, 0.0)
+        label = f"{c} (w={w_val:.2f})" if w_val != 1.0 else c
+
+        if np.any(pos_vals > 0):
+            ax.bar(
+                x,
+                pos_vals,
+                bottom=pos_bottom,
+                label=label,
+                color=color,
+                alpha=0.85,
+                width=0.6,
+            )
+            pos_bottom += pos_vals
+
+        if np.any(neg_vals < 0):
+            ax.bar(
+                x,
+                neg_vals,
+                bottom=neg_bottom,
+                label=label if not np.any(pos_vals > 0) else "",
+                color=color,
+                alpha=0.85,
+                width=0.6,
+                hatch="//",
+            )
+            neg_bottom += neg_vals
+
+    # Total reward marker on top of each bar
+    for i, total in enumerate(totals):
+        ax.text(
+            x[i],
+            max(pos_bottom[i], 0) + 0.02,
+            f"{total:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
+
+    ax.axhline(0, color="black", linewidth=0.8, linestyle="-")
+    ax.set_xticks(x)
+    ax.set_xticklabels(stage_labels, rotation=0, ha="center")
+    ax.set_ylabel("Weighted Reward Contribution")
+
+    suptitle = "Reward Component Breakdown"
+    if model_name:
+        suptitle += f" \u2014 {model_name}"
+    ax.set_title(suptitle, fontsize=13, fontweight="bold")
+
+    # De-duplicate legend entries (avoid double labels from pos/neg split)
+    handles, labels = ax.get_legend_handles_labels()
+    seen: dict[str, Any] = {}
+    unique_handles = []
+    unique_labels = []
+    for h, lbl in zip(handles, labels):
+        if lbl and lbl not in seen:
+            seen[lbl] = True
+            unique_handles.append(h)
+            unique_labels.append(lbl)
+    ax.legend(
+        unique_handles,
+        unique_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.06),
+        fontsize=9,
+        ncol=min(len(unique_labels), 6),
+    )
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_path}")
