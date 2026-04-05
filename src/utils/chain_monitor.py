@@ -194,22 +194,67 @@ def _grep_lines(
     return out.splitlines() if out else []
 
 
-def _extract_completion_samples(lines: list[str]) -> list[str]:
-    """Extract the last completion sample block from log lines."""
+def _extract_completion_samples(
+    lines: list[str],
+) -> list[str]:
+    """Extract a compact view of the last sample from the log.
+
+    Returns a short list of lines: truncated completion + reward breakdown.
+    Only keeps the first sample from the last block.
+    """
+    # Find the last COMPLETION SAMPLES block
     block: list[str] = []
     in_block = False
     for line in lines:
         stripped = line.strip()
         if "COMPLETION SAMPLES" in stripped:
             in_block = True
-            block = [stripped]
+            block = []
             continue
         if in_block:
             block.append(stripped)
             if stripped.startswith("\u2550" * 10) and len(block) > 3:
-                # End of block
                 in_block = False
-    return block
+
+    if not block:
+        return []
+
+    # Parse first sample only: look for COMPLETION: ... REWARDS: ...
+    completion_lines: list[str] = []
+    rewards_line = ""
+    in_completion = False
+    found_first = False
+    for line in block:
+        if line.startswith("Sample ") and found_first:
+            break  # stop at second sample
+        if line.startswith("Sample "):
+            found_first = True
+            continue
+        if line == "COMPLETION:":
+            in_completion = True
+            continue
+        if line.startswith("REWARDS:"):
+            rewards_line = line
+            in_completion = False
+            continue
+        if in_completion:
+            completion_lines.append(line)
+
+    if not completion_lines and not rewards_line:
+        return []
+
+    # Truncate completion to ~3 lines
+    comp_text = "\n".join(completion_lines).strip()
+    display_lines = comp_text.splitlines()
+    if len(display_lines) > 3:
+        display_lines = display_lines[:3] + ["[...]"]
+
+    result = [f"{_DIM}─── Last completion ───{_RST}"]
+    for dl in display_lines:
+        result.append(f"  {_DIM}{dl}{_RST}")
+    if rewards_line:
+        result.append(f"  {_CYAN}{rewards_line}{_RST}")
+    return result
 
 
 def _parse_training_log(log_path: Path, job: JobInfo) -> None:
