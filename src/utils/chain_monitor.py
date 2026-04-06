@@ -327,17 +327,11 @@ def _extract_completion_samples(
                 raw = f"{name}={val_str}"
                 pad = " " * max(0, col_w - len(raw))
                 if v > 0:
-                    colored_parts.append(
-                        f"{_GREEN}{raw}{_RST}{pad}"
-                    )
+                    colored_parts.append(f"{_GREEN}{raw}{_RST}{pad}")
                 elif v < 0:
-                    colored_parts.append(
-                        f"{_RED}{raw}{_RST}{pad}"
-                    )
+                    colored_parts.append(f"{_RED}{raw}{_RST}{pad}")
                 else:
-                    colored_parts.append(
-                        f"{_GRAY}{raw}{_RST}{pad}"
-                    )
+                    colored_parts.append(f"{_GRAY}{raw}{_RST}{pad}")
             has_reasoning = any(n == "reasoning" for n, _ in parts)
             split = 4 if has_reasoning else 3
             row1 = colored_parts[:split]
