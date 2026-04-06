@@ -299,12 +299,9 @@ def _extract_completion_samples(
         f"{_DIM}─── Last completion{_RST}{diff_badge} {_DIM}───{_RST}"
     ]
 
-    # Prompt (cyan, truncated)
+    # Prompt (cyan, full text)
     if prompt_text:
-        pt = prompt_text.strip()
-        if len(pt) > 120:
-            pt = pt[:120] + "..."
-        result.append(f"  {_CYAN}PROMPT:{_RST} {pt}")
+        result.append(f"  {_CYAN}PROMPT:{_RST} {prompt_text.strip()}")
 
     # Think section (colored magenta/purple)
     if think_lines:
@@ -364,9 +361,36 @@ def _extract_completion_samples(
             tc = _GREEN if tv > 0 else (_RED if tv < 0 else _GRAY)
             result.append(f"  {tc}{total_line.strip()}{_RST}")
 
-    # Schema metadata line (dim yellow)
+    # Schema metadata (pretty-printed, colored)
     if schema_line:
-        result.append(f"  {_YELLOW}{schema_line}{_RST}")
+        raw_json = schema_line.replace("SCHEMA:", "", 1).strip()
+        try:
+            import json as _json
+
+            schema_obj = _json.loads(raw_json)
+            result.append(f"  {_YELLOW}SCHEMA:{_RST}")
+            for sk, sv in schema_obj.items():
+                if isinstance(sv, list):
+                    sv_str = ", ".join(
+                        f"{_CYAN}{x}{_RST}" for x in sv
+                    )
+                    result.append(f"    {_DIM}{sk}:{_RST} [{sv_str}]")
+                elif isinstance(sv, dict):
+                    result.append(f"    {_DIM}{sk}:{_RST}")
+                    for dk, dv in sv.items():
+                        result.append(
+                            f"      {_DIM}{dk}:{_RST} {_CYAN}{dv}{_RST}"
+                        )
+                elif isinstance(sv, (int, float)):
+                    result.append(
+                        f"    {_DIM}{sk}:{_RST} {_GREEN}{sv}{_RST}"
+                    )
+                else:
+                    result.append(
+                        f"    {_DIM}{sk}:{_RST} {_CYAN}{sv}{_RST}"
+                    )
+        except Exception:
+            result.append(f"  {_YELLOW}{schema_line}{_RST}")
 
     return result
 
