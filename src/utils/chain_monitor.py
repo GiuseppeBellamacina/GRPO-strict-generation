@@ -40,6 +40,7 @@ _SAMPLE_MAX_LINES: int = 0  # 0 = no limit
 
 # Regex patterns for training log parsing
 _KV_STEP = re.compile(r"^\s+step=(\d+)\s+loss=")
+_KV_REWARD = re.compile(r"reward=([+-]?\d+\.\d+)")
 _STAGE_START = re.compile(r"\[stage (\d+)\] steps=(\d+)")
 _STAGE_DONE = re.compile(r"\[stage (\d+)\] (\S+) completed")
 # tqdm progress bar: " 47%|████▋     | 420/900 [29:23<25:49"
@@ -54,7 +55,7 @@ _TQDM_GENERATING = re.compile(r"Generating.*\|\s*(\d+)/(\d+)\s*\[")
 _TQDM_TIME = re.compile(r"\[([\d:]+)<([\d:]+)")
 _EVAL_CHECKPOINT = re.compile(r"Evaluating: (.+)")
 _EVAL_STAGE_NUM = re.compile(r"Stage (\d+)")
-_EVAL_PASS = re.compile(r"(\S+) Pass@1: ([\d.]+)")
+_EVAL_PASS = re.compile(r"(.+?)\s+Pass@1:\s+([\d.]+)")
 _EVAL_COMPLETE = re.compile(r"Evaluation complete")
 
 
@@ -81,6 +82,7 @@ class JobInfo:
     elapsed: str = ""  # elapsed time from squeue (e.g. "12:34")
     tqdm_elapsed: str = ""  # elapsed time from tqdm bar
     tqdm_eta: str = ""  # remaining time from tqdm bar
+    last_reward: str = ""  # last logged mean reward
     completion_samples: list[str] = field(default_factory=list)
 
     @property
@@ -167,6 +169,9 @@ def _cache_update_job(job: "JobInfo") -> None:
         if job.job_type == "eval" and job.eval_pass:
             entry["eval_pass"] = job.eval_pass
 
+        if job.last_reward:
+            entry["last_reward"] = job.last_reward
+
         entry["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         cache["jobs"][key] = entry
 
@@ -201,6 +206,8 @@ def _cache_enrich_job(job: "JobInfo") -> None:
         job.stage_name = entry["stage_name"]
     if not job.exit_code and entry.get("exit_code"):
         job.exit_code = entry["exit_code"]
+    if not job.last_reward and entry.get("last_reward"):
+        job.last_reward = entry["last_reward"]
 
 
 # ── SLURM queries ─────────────────────────────────────────────────────────────
@@ -536,6 +543,10 @@ def _parse_training_log(log_path: Path, job: JobInfo) -> None:
         m = _KV_STEP.search(line)
         if m:
             job.step = int(m.group(1))
+            # Extract reward from the same line
+            mr = _KV_REWARD.search(line)
+            if mr:
+                job.last_reward = mr.group(1)
             break
 
         # Try tqdm progress bar: "47%|████▋| 420/900 ["
@@ -893,6 +904,8 @@ def _build_pipeline() -> list[JobInfo]:
             job.stage = entry["stage"]
         if entry.get("stage_name"):
             job.stage_name = entry["stage_name"]
+        if entry.get("last_reward"):
+            job.last_reward = entry["last_reward"]
         jobs.append(job)
 
     # Sort jobs by pipeline_jobs order from cache for consistent display
@@ -1155,7 +1168,7 @@ def _display(
     jobs: list[JobInfo],
     show_table: bool = True,
     show_samples: bool = False,
-    max_sample_lines: int = 0,
+    show_metrics: bool = False,
 ) -> None:
     """Print the full pipeline status."""
     completed = sum(1 for j in jobs if j.state == "COMPLETED")
@@ -1298,44 +1311,48 @@ def _display(
         for sl in running[0].completion_samples:
             print(f"  {sl}")
 
-    # Show summary table of eval results (from live data + cache)
-    eval_jobs = [j for j in jobs if j.job_type == "eval"]
-    has_eval_data = any(j.eval_pass for j in eval_jobs)
-    if not has_eval_data:
-        # Try cache for eval jobs not in the current pipeline
+    # Show metrics table (--metrics): train reward + eval pass@1 from cache
+    if show_metrics:
         cache = _load_cache()
-        for key, entry in cache.get("jobs", {}).items():
-            if not key.startswith("eval-"):
-                continue
-            tag = key[5:]  # strip "eval-"
-            if any(j.tag == tag for j in eval_jobs):
-                continue  # already in pipeline
-            if entry.get("eval_pass"):
-                cj = JobInfo(
-                    job_type="eval",
-                    config="",
-                    tag=tag,
-                    state=entry.get("state", "COMPLETED"),
-                    eval_pass=entry["eval_pass"],
-                )
-                eval_jobs.append(cj)
-                has_eval_data = True
+        # Collect unique model tags (strip "train-"/"eval-" prefix)
+        model_tags: list[str] = []
+        seen_tags: set[str] = set()
+        for key in cache.get("pipeline_jobs", []):
+            parts = key.split("-", 1)
+            if len(parts) == 2:
+                tag = parts[1]
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    model_tags.append(tag)
 
-    if eval_jobs and has_eval_data:
-        print()
-        print(
-            f"  {_BOLD}{'Model':<25s} {'Status':<12s} {'Pass@1'}{_RST}"
-        )
-        print(f"  {'─' * 50}")
-        for ej in eval_jobs:
-            sc = _STATE_COLORS.get(ej.state, "")
-            status = f"{sc}{ej.state}{_RST}"
-            p1 = ej.eval_pass if ej.eval_pass else "-"
-            if ej.state == "COMPLETED" and ej.eval_pass:
-                p1 = f"{_GREEN}{_BOLD}{ej.eval_pass}{_RST}"
-            elif ej.state == "FAILED":
-                p1 = f"{_RED}—{_RST}"
-            print(f"  {ej.tag:<25s} {status:<22s} {p1}")
+        # Only show models that have cached data
+        rows: list[tuple[str, str, str]] = []
+        for tag in model_tags:
+            train_entry = cache["jobs"].get(f"train-{tag}", {})
+            eval_entry = cache["jobs"].get(f"eval-{tag}", {})
+            train_rw = train_entry.get("last_reward", "")
+            eval_p1 = eval_entry.get("eval_pass", "")
+            if train_rw or eval_p1:
+                rows.append((tag, train_rw, eval_p1))
+
+        if rows:
+            print()
+            print(
+                f"  {_BOLD}{'Model':<28s} {'Train Reward':<16s} {'Eval Pass@1'}{_RST}"
+            )
+            print(f"  {'─' * 58}")
+            for tag, rw, p1 in rows:
+                # Train reward: cyan
+                rw_str = (
+                    f"{_CYAN}{rw}{_RST}" if rw else f"{_DIM}-{_RST}"
+                )
+                # Eval pass@1: green
+                p1_str = (
+                    f"{_GREEN}{_BOLD}{p1}{_RST}"
+                    if p1
+                    else f"{_DIM}-{_RST}"
+                )
+                print(f"  {tag:<28s} {rw_str:<27s} {p1_str}")
 
     print()
 
@@ -1375,6 +1392,11 @@ def main() -> None:
         default=None,
         help="Show completion samples. Optional: max output lines (default: no limit)",
     )
+    parser.add_argument(
+        "--metrics",
+        action="store_true",
+        help="Show metrics table with train reward and eval pass@1 from cache",
+    )
     args = parser.parse_args()
 
     show_samples = args.samples is not None
@@ -1394,7 +1416,7 @@ def main() -> None:
                 jobs,
                 show_table=args.tab,
                 show_samples=show_samples,
-                max_sample_lines=max_sample_lines,
+                show_metrics=args.metrics,
             )
 
             # Check if pipeline/job is done
