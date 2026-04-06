@@ -899,6 +899,7 @@ def _build_pipeline() -> list[JobInfo]:
 
     # Recover jobs tracked in cache but missing from live sources
     cache = _load_cache()
+    pipeline_keys = set(cache.get("pipeline_jobs", []))
     seen_keys = {f"{j.job_type}-{j.tag}" for j in jobs}
     for key in cache.get("pipeline_jobs", []):
         if key in seen_keys:
@@ -926,6 +927,15 @@ def _build_pipeline() -> list[JobInfo]:
         if entry.get("eval_stages"):
             job.eval_stages = entry["eval_stages"]
         jobs.append(job)
+
+    # Filter: only keep jobs that are in the current pipeline_jobs list.
+    # This prevents old sacct/chain_log entries from previous runs leaking in.
+    if pipeline_keys:
+        jobs = [
+            j
+            for j in jobs
+            if f"{j.job_type}-{j.tag}" in pipeline_keys
+        ]
 
     # Sort jobs by pipeline_jobs order from cache for consistent display
     pipeline_order = cache.get("pipeline_jobs", [])
