@@ -226,14 +226,15 @@ def _extract_completion_samples(
     if not block:
         return []
 
-    # Parse first sample only: THINK / OUTPUT / REWARDS sections
+    # Parse first sample only: PROMPT / THINK / OUTPUT / REWARDS sections
+    prompt_text = ""
     think_lines: list[str] = []
     output_lines: list[str] = []
     rewards_line = ""
     total_line = ""
     schema_line = ""
     difficulty = ""
-    section = ""  # "think", "output", or ""
+    section = ""  # "prompt", "think", "output", or ""
     found_first = False
     for line in block:
         if line.startswith("Sample ") and found_first:
@@ -244,6 +245,10 @@ def _extract_completion_samples(
             dm = re.search(r"\[difficulty=(\w+)\]", line)
             if dm:
                 difficulty = dm.group(1)
+            continue
+        if line.startswith("PROMPT:"):
+            prompt_text = line[len("PROMPT:") :].strip()
+            section = "prompt"
             continue
         if line == "THINK:":
             section = "think"
@@ -269,7 +274,9 @@ def _extract_completion_samples(
                 rewards_line += "  " + line
                 continue
             section = ""
-        if section == "think":
+        if section == "prompt":
+            prompt_text += " " + line
+        elif section == "think":
             think_lines.append(line)
         elif section == "output":
             output_lines.append(line)
@@ -291,6 +298,13 @@ def _extract_completion_samples(
     result = [
         f"{_DIM}─── Last completion{_RST}{diff_badge} {_DIM}───{_RST}"
     ]
+
+    # Prompt (cyan, truncated)
+    if prompt_text:
+        pt = prompt_text.strip()
+        if len(pt) > 120:
+            pt = pt[:120] + "..."
+        result.append(f"  {_CYAN}PROMPT:{_RST} {pt}")
 
     # Think section (colored magenta/purple)
     if think_lines:

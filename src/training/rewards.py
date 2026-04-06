@@ -14,6 +14,7 @@ Security: NEVER uses exec() or eval(). Only static parsing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any, Callable
@@ -21,12 +22,24 @@ from typing import Any, Callable
 # ---------------------------------------------------------------------------
 # Schema metadata registry
 # ---------------------------------------------------------------------------
-# Maps prompt text (first 200 chars) → parsed schema dict.
+# Maps prompt hash → parsed schema dict.
 # Populated by ``register_schema_metadata()`` at dataset load time so that
 # ``schema_reward`` can use exact structural constraints without embedding
 # them in the prompt visible to the LLM.
 
 _schema_registry: dict[str, dict[str, Any]] = {}
+
+
+def _prompt_key(prompt: str) -> str:
+    """Return a collision-free hash key for a prompt string.
+
+    Using first-N-chars as key caused collisions when the chat-template
+    preamble (system prompt + special tokens) exceeded the truncation
+    length, making all prompts map to the same key.
+    """
+    return hashlib.sha256(
+        prompt.encode("utf-8", errors="replace")
+    ).hexdigest()
 
 
 def register_schema_metadata(
@@ -41,7 +54,7 @@ def register_schema_metadata(
     for prompt, meta in zip(prompts, schema_metas):
         if not meta:
             continue
-        key = str(prompt)[:200]
+        key = _prompt_key(str(prompt))
         try:
             _schema_registry[key] = json.loads(meta)
             count += 1
@@ -59,7 +72,7 @@ def _lookup_schema(prompt: str) -> dict[str, Any] | None:
       1. Module-level registry (populated from dataset at training time)
       2. Inline ``[SCHEMA:{...}]`` tag in the text (used in tests / eval)
     """
-    key = str(prompt)[:200]
+    key = _prompt_key(str(prompt))
     result = _schema_registry.get(key)
     if result is not None:
         return result

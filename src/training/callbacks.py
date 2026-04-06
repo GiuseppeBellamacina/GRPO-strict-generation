@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import deque
 from pathlib import Path
@@ -314,8 +315,10 @@ class CompletionSampleLogger:
                 else ""
             )
             if prompt and diff:
-                # Use first 200 chars as key to avoid huge memory usage
-                self._difficulty_map[prompt[:200]] = diff
+                key = hashlib.sha256(
+                    prompt.encode("utf-8", errors="replace")
+                ).hexdigest()
+                self._difficulty_map[key] = diff
 
     def _capture(
         self,
@@ -335,7 +338,11 @@ class CompletionSampleLogger:
 
             # Look up difficulty from the prompt
             prompt_key = (
-                str(prompt)[:200] if prompt is not None else ""
+                hashlib.sha256(
+                    str(prompt).encode("utf-8", errors="replace")
+                ).hexdigest()
+                if prompt is not None
+                else ""
             )
             difficulty = self._difficulty_map.get(prompt_key, "?")
 
