@@ -282,10 +282,7 @@ watcher-status() {
     # Controlla se c'è un fallimento
     if [ -f "$PROJ_DIR/.chain_failed" ]; then
         local failed=$(cat "$PROJ_DIR/.chain_failed")
-        local remaining=0
-        [ -f "$PROJ_DIR/.job_chain" ] && remaining=$(wc -l < "$PROJ_DIR/.job_chain")
         echo "❌ Pipeline FALLITA — job: $failed"
-        echo "   Rimanenti: $remaining job"
         echo "   Per riprendere: run-all --resume"
         return 1
     fi
@@ -293,16 +290,15 @@ watcher-status() {
     if [ -f "$PROJ_DIR/.chain_pid" ]; then
         local pid=$(cat "$PROJ_DIR/.chain_pid")
         if ps -p "$pid" > /dev/null 2>&1; then
-            local remaining=0
-            [ -f "$PROJ_DIR/.job_chain" ] && remaining=$(wc -l < "$PROJ_DIR/.job_chain")
-            echo "✅ Watcher attivo (PID $pid) — $remaining job rimanenti"
-            [ -f "$PROJ_DIR/.job_chain" ] && echo "Prossimi:" && cat -n "$PROJ_DIR/.job_chain"
+            echo "✅ Watcher attivo (PID $pid)"
         else
             echo "❌ Watcher morto (PID $pid non trovato)"
             rm -f "$PROJ_DIR/.chain_pid"
+            return 1
         fi
     else
-        echo "❌ Nessun watcher attivo (.chain_pid non trovato)"
+        echo "❌ Nessun watcher attivo"
+        return 1
     fi
 }
 
@@ -337,6 +333,30 @@ watcher-kill() {
 # Pulizia selettiva di un modello (uso: clean-model <TAG> [--all])
 clean-model() {
     cd "$PROJ_DIR" && bash cluster/clean_model.sh "$@"
+}
+
+# Aggiungi job alla pipeline attiva (uso: chain-add [--think] [--models=1,3] [--eval-only] [--train-only])
+chain-add() {
+    cd "$PROJ_DIR" && bash cluster/run_all.sh --append "$@"
+}
+
+# Rimuovi job dalla pipeline attiva (uso: chain-remove --models=1,3)
+chain-remove() {
+    cd "$PROJ_DIR" && bash cluster/run_all.sh --remove "$@"
+}
+
+# Mostra la catena di job attuale (uso: chain-show)
+chain-show() {
+    watcher-status
+    echo ""
+    if [ ! -f "$PROJ_DIR/.job_chain" ] || [ ! -s "$PROJ_DIR/.job_chain" ]; then
+        echo "Nessun job in coda."
+        return 0
+    fi
+    local total
+    total=$(wc -l < "$PROJ_DIR/.job_chain")
+    echo "Job in coda ($total):"
+    cat -n "$PROJ_DIR/.job_chain"
 }
 
 # Monitor live della pipeline (uso: monitor [--poll N])

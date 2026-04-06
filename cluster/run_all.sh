@@ -13,6 +13,8 @@
 #   bash cluster/run_all.sh --models=1,3,5         # solo modelli 1, 3 e 5
 #   bash cluster/run_all.sh --models=1t,2e,3       # 1=solo train, 2=solo eval, 3=entrambi
 #   bash cluster/run_all.sh --models=4t,5te        # 4=solo train, 5=train+eval
+#   bash cluster/run_all.sh --append --think       # aggiungi think models a pipeline attiva
+#   bash cluster/run_all.sh --remove --models=3,5  # rimuovi modelli 3 e 5 dalla coda
 #
 # Suffissi per --models:
 #   (nessuno)  train + eval (default)
@@ -43,15 +45,19 @@ GLOBAL_EVAL=1
 ONLY_MODELS=""
 USE_THINK=0
 RESUME=0
+APPEND=0
+REMOVE=0
 for arg in "$@"; do
     case "$arg" in
         --eval-only)  GLOBAL_TRAIN=0 ;;
         --train-only) GLOBAL_EVAL=0 ;;
         --think)      USE_THINK=1 ;;
+        --append)     APPEND=1 ;;
+        --remove)     REMOVE=1 ;;
         --resume)     RESUME=1 ;;
         --models=*)   ONLY_MODELS="${arg#--models=}" ;;
         --help|-h)
-            echo "Uso: bash cluster/run_all.sh [--eval-only] [--train-only] [--models=SPEC] [--resume]"
+            echo "Uso: bash cluster/run_all.sh [--eval-only] [--train-only] [--models=SPEC] [--resume] [--append] [--remove]"
             echo ""
             echo "Opzioni globali:"
             echo "  --eval-only      Solo evaluation per tutti (skip training)"
@@ -60,6 +66,9 @@ for arg in "$@"; do
             echo "  --resume         Riprendi pipeline da dove si era fermata"
             echo "                   Se l'ultimo job era un train, viene rilanciato con --resume"
             echo "                   per riprendere dall'ultimo checkpoint salvato."
+            echo "  --append         Aggiungi job alla pipeline attiva senza riavviare il watcher"
+            echo "                   (auto-detect se c'è un watcher attivo)"
+            echo "  --remove         Rimuovi job dalla pipeline attiva (richiede --models=SPEC)"
             echo ""
             echo "Selezione modelli (--models=SPEC):"
             echo "  SPEC è una lista separata da virgole: INDICE[SUFFISSO],..."
@@ -173,6 +182,94 @@ if [ "$RESUME" -eq 1 ]; then
     exit 0
 fi
 
+# ── Funzione helper: controlla se il watcher è attivo ─────────────────────────
+_watcher_is_alive() {
+    if [ -f "$PROJ_DIR/.chain_pid" ]; then
+        local pid
+        pid=$(cat "$PROJ_DIR/.chain_pid")
+        if ps -p "$pid" > /dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# ── Auto-detect: se watcher attivo e non --append/--remove esplicito ──────────
+if [ "$APPEND" -eq 0 ] && [ "$REMOVE" -eq 0 ] && _watcher_is_alive; then
+    echo "⚠️  Pipeline già attiva (watcher PID $(cat "$PROJ_DIR/.chain_pid"))."
+    echo "   I nuovi job verranno AGGIUNTI alla coda esistente."
+    echo "   (Usa Ctrl-C per annullare, oppure uccidi il watcher prima: watcher-kill)"
+    echo ""
+    APPEND=1
+fi
+
+# ── Remove mode ───────────────────────────────────────────────────────────────
+if [ "$REMOVE" -eq 1 ]; then
+    if [ ! -f "$CHAIN_FILE" ] || [ ! -s "$CHAIN_FILE" ]; then
+        echo "❌ Nessuna catena attiva (.job_chain vuoto o non trovato)."
+        exit 1
+    fi
+    if [ -z "$ONLY_MODELS" ]; then
+        echo "❌ --remove richiede --models=SPEC per specificare quali job rimuovere."
+        echo "   Esempio: bash cluster/run_all.sh --remove --models=3,5"
+        exit 1
+    fi
+
+    # Costruisci lista di tag da rimuovere
+    REMOVE_TAGS=()
+    IFS=',' read -ra SPECS <<< "$ONLY_MODELS"
+    for spec in "${SPECS[@]}"; do
+        idx=$(echo "$spec" | grep -oP '^\d+')
+        i=$((idx - 1))
+        if [ $i -lt 0 ] || [ $i -ge ${#MODELS[@]} ]; then
+            echo "⚠️  Indice $idx fuori range (1-${#MODELS[@]})"
+            continue
+        fi
+        tag=$(echo "${MODELS[$i]}" | cut -d: -f1)
+        REMOVE_TAGS+=("$tag")
+    done
+
+    if [ ${#REMOVE_TAGS[@]} -eq 0 ]; then
+        echo "❌ Nessun modello valido da rimuovere."
+        exit 1
+    fi
+
+    echo "Catena attuale:"
+    cat -n "$CHAIN_FILE"
+    echo ""
+
+    # Filtra le righe che NON contengono i tag da rimuovere
+    REMOVED=0
+    TEMP_CHAIN=$(mktemp)
+    while IFS= read -r line; do
+        KEEP=1
+        for tag in "${REMOVE_TAGS[@]}"; do
+            if echo "$line" | grep -q ":${tag}$\|:${tag}:"; then
+                echo "  ✗ Rimosso: $line"
+                KEEP=0
+                REMOVED=$((REMOVED + 1))
+                break
+            fi
+        done
+        [ "$KEEP" -eq 1 ] && echo "$line" >> "$TEMP_CHAIN"
+    done < "$CHAIN_FILE"
+
+    if [ "$REMOVED" -eq 0 ]; then
+        echo "⚠️  Nessun job corrispondente trovato nella catena."
+        rm -f "$TEMP_CHAIN"
+        exit 0
+    fi
+
+    mv "$TEMP_CHAIN" "$CHAIN_FILE"
+    [ ! -s "$CHAIN_FILE" ] && rm -f "$CHAIN_FILE"
+
+    REMAINING=$([ -f "$CHAIN_FILE" ] && wc -l < "$CHAIN_FILE" || echo 0)
+    echo ""
+    echo "✅ Rimossi $REMOVED job. Rimanenti: $REMAINING"
+    [ -f "$CHAIN_FILE" ] && echo "" && echo "Catena aggiornata:" && cat -n "$CHAIN_FILE"
+    exit 0
+fi
+
 # ── Filtra modelli se --models è specificato ──────────────────────────────────
 # Ogni entry diventa "TAG:CONFIG:do_train:do_eval"
 SELECTED=()
@@ -209,9 +306,12 @@ fi
 
 # ── Costruisci la catena ──────────────────────────────────────────────────────
 # Ogni riga: TYPE:CONFIG:TAG
-> "$CHAIN_FILE"  # svuota/crea il file
+if [ "$APPEND" -eq 0 ]; then
+    > "$CHAIN_FILE"  # svuota/crea il file (new pipeline)
+fi
+# In append mode, il file esiste già e ci aggiungiamo in coda
 
-MODEL_COUNT=0
+NEW_JOBS=0
 for sel in "${SELECTED[@]}"; do
     # sel = "TAG:CONFIG:do_train:do_eval"
     TAG=$(echo "$sel" | cut -d: -f1)
@@ -221,9 +321,11 @@ for sel in "${SELECTED[@]}"; do
 
     if [ "$DO_TRAIN" -eq 1 ]; then
         echo "train:${CFG}:${TAG}" >> "$CHAIN_FILE"
+        NEW_JOBS=$((NEW_JOBS + 1))
     fi
     if [ "$DO_EVAL" -eq 1 ]; then
         echo "eval:${CFG}:${TAG}" >> "$CHAIN_FILE"
+        NEW_JOBS=$((NEW_JOBS + 1))
     fi
     MODEL_COUNT=$((MODEL_COUNT + 1))
 done
@@ -232,6 +334,22 @@ TOTAL=$(wc -l < "$CHAIN_FILE")
 
 THINK_LABEL="off"
 [ "$USE_THINK" -eq 1 ] && THINK_LABEL="on"
+
+if [ "$APPEND" -eq 1 ]; then
+    echo "============================================"
+    echo "  Jobs aggiunti alla pipeline attiva"
+    echo "  Date:  $(date)"
+    echo "  Nuovi: $NEW_JOBS job ($MODEL_COUNT modelli)"
+    echo "  Think: $THINK_LABEL"
+    echo "  Totale in coda: $TOTAL"
+    echo "============================================"
+    echo ""
+    echo "Catena completa:"
+    cat -n "$CHAIN_FILE"
+    echo ""
+    echo "✅ Il watcher (PID $(cat "$PROJ_DIR/.chain_pid")) li eseguirà automaticamente."
+    exit 0
+fi
 
 echo "============================================"
 echo "  Multi-model GRPO Pipeline (self-chaining)"

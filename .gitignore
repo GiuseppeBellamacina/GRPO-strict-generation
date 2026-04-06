@@ -54,3 +54,9 @@ Thumbs.db
 
 # Temporary files
 *.tmp
+
+# Cluster runtime files
+.job_chain
+.chain_pid
+.chain_failed
+.monitor_cache

@@ -17,6 +17,7 @@ Designed to run on the cluster login node (same node as the watcher).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -30,6 +31,7 @@ PROJ_DIR = (
 )
 CHAIN_FILE = PROJ_DIR / ".job_chain"
 CHAIN_PID_FILE = PROJ_DIR / ".chain_pid"
+CACHE_FILE = PROJ_DIR / ".monitor_cache"
 LOGS_DIR = PROJ_DIR / "logs"
 CHAIN_LOG = LOGS_DIR / "chain_watcher.log"
 
@@ -99,6 +101,99 @@ def _run(cmd: str) -> str:
         return r.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return ""
+
+
+# ── Monitor cache ─────────────────────────────────────────────────────────────
+# Persistent JSON file that stores job results so the monitor can display
+# them even when sacct data ages out or logs are cleaned up.
+#
+# Structure: {"jobs": {"train-smollm2-135m": {...}, "eval-smollm2-135m": {...}}}
+# Each job entry: {state, slurm_id, eval_pass, stage, exit_code, updated_at}
+
+
+def _load_cache() -> dict:
+    """Load the monitor cache from disk."""
+    if not CACHE_FILE.exists():
+        return {"jobs": {}}
+    try:
+        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {"jobs": {}}
+
+
+def _save_cache(cache: dict) -> None:
+    """Write the monitor cache to disk."""
+    try:
+        CACHE_FILE.write_text(
+            json.dumps(cache, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _cache_update_job(job: "JobInfo") -> None:
+    """Update the cache with the latest info from a job.
+
+    Only writes if the job has meaningful state (not PENDING).
+    """
+    if job.state == "PENDING":
+        return
+    cache = _load_cache()
+    key = f"{job.job_type}-{job.tag}"
+    entry = cache["jobs"].get(key, {})
+
+    # Always update state and slurm_id
+    entry["state"] = job.state
+    if job.slurm_id:
+        entry["slurm_id"] = job.slurm_id
+    if job.exit_code:
+        entry["exit_code"] = job.exit_code
+
+    # Training-specific
+    if job.job_type == "train":
+        if job.stage > 0:
+            entry["stage"] = job.stage
+        if job.stage_name:
+            entry["stage_name"] = job.stage_name
+
+    # Eval-specific — only update pass@1 if non-empty
+    if job.job_type == "eval" and job.eval_pass:
+        entry["eval_pass"] = job.eval_pass
+
+    entry["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    cache["jobs"][key] = entry
+    _save_cache(cache)
+
+
+def _cache_enrich_job(job: "JobInfo") -> None:
+    """Fill in missing fields on a job from cached data.
+
+    Useful when sacct/squeue can't find the job anymore but the
+    cache remembers its last known state.
+    """
+    cache = _load_cache()
+    key = f"{job.job_type}-{job.tag}"
+    entry = cache["jobs"].get(key)
+    if not entry:
+        return
+
+    # Only enrich if the job has no live data
+    if job.state == "PENDING" and entry.get("state") in (
+        "COMPLETED",
+        "FAILED",
+    ):
+        job.state = entry["state"]
+    if not job.slurm_id and entry.get("slurm_id"):
+        job.slurm_id = entry["slurm_id"]
+    if not job.eval_pass and entry.get("eval_pass"):
+        job.eval_pass = entry["eval_pass"]
+    if job.stage == 0 and entry.get("stage"):
+        job.stage = entry["stage"]
+    if not job.stage_name and entry.get("stage_name"):
+        job.stage_name = entry["stage_name"]
+    if not job.exit_code and entry.get("exit_code"):
+        job.exit_code = entry["exit_code"]
 
 
 # ── SLURM queries ─────────────────────────────────────────────────────────────
@@ -365,9 +460,7 @@ def _extract_completion_samples(
     if schema_line:
         raw_json = schema_line.replace("SCHEMA:", "", 1).strip()
         try:
-            import json as _json
-
-            schema_obj = _json.loads(raw_json)
+            schema_obj = json.loads(raw_json)
             result.append(f"  {_YELLOW}SCHEMA:{_RST}")
             for sk, sv in schema_obj.items():
                 if isinstance(sv, list):
@@ -762,6 +855,13 @@ def _build_pipeline() -> list[JobInfo]:
                 if not has_progress:
                     job.state = "STARTING"
 
+    # ── Cache integration ─────────────────────────────────────────────────
+    # Enrich jobs that have no live data with cached info, then update cache
+    for job in jobs:
+        _cache_enrich_job(job)
+    for job in jobs:
+        _cache_update_job(job)
+
     return jobs
 
 
@@ -1155,9 +1255,30 @@ def _display(
         for sl in running[0].completion_samples:
             print(f"  {sl}")
 
-    # Show summary table of eval results
+    # Show summary table of eval results (from live data + cache)
     eval_jobs = [j for j in jobs if j.job_type == "eval"]
-    if eval_jobs:
+    has_eval_data = any(j.eval_pass for j in eval_jobs)
+    if not has_eval_data:
+        # Try cache for eval jobs not in the current pipeline
+        cache = _load_cache()
+        for key, entry in cache.get("jobs", {}).items():
+            if not key.startswith("eval-"):
+                continue
+            tag = key[5:]  # strip "eval-"
+            if any(j.tag == tag for j in eval_jobs):
+                continue  # already in pipeline
+            if entry.get("eval_pass"):
+                cj = JobInfo(
+                    job_type="eval",
+                    config="",
+                    tag=tag,
+                    state=entry.get("state", "COMPLETED"),
+                    eval_pass=entry["eval_pass"],
+                )
+                eval_jobs.append(cj)
+                has_eval_data = True
+
+    if eval_jobs and has_eval_data:
         print()
         print(
             f"  {_BOLD}{'Model':<25s} {'Status':<12s} {'Pass@1'}{_RST}"
