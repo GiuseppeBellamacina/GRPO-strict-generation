@@ -401,26 +401,24 @@ chain-stop() {
             local stopped_type=$(echo "$active_name" | cut -d- -f1)
             local stopped_tag=$(echo "$active_name" | cut -d- -f2-)
 
-            # Cerca il config corrispondente: scan .job_chain e la catena originale
-            # Primo, cerca nella cache del monitor
+            # Cerca il config corrispondente
             local stopped_cfg=""
-            stopped_cfg=$(python3 -c "
-import json, pathlib, sys
-cache_path = pathlib.Path('.monitor_cache')
-if not cache_path.exists():
-    sys.exit(1)
-cache = json.loads(cache_path.read_text())
-entry = cache.get('jobs', {}).get('${active_name}', {})
-cfg = entry.get('config', '')
-if cfg:
-    print(cfg)
-else:
-    sys.exit(1)
-" 2>/dev/null || true)
 
-            # Fallback: scan logs for config
+            # 1. Parse dal watcher log: "[chain] Sottometto: train gemma2-2b (experiments/configs/grpo_gemma2.yaml)"
+            stopped_cfg=$(grep "Sottometto: ${stopped_type} ${stopped_tag} " logs/chain_watcher.log 2>/dev/null | tail -1 | sed -n 's/.*(\([^)]*\)).*/\1/p' || true)
+
+            # 2. Fallback: derive from tag name (deterministic mapping)
             if [ -z "$stopped_cfg" ]; then
-                stopped_cfg=$(grep ":${stopped_tag}" logs/chain_watcher.log 2>/dev/null | tail -1 | grep -oP '\(([^)]+)\)' | tr -d '()' || true)
+                local base_tag="${stopped_tag%-think}"  # strip -think suffix
+                local think_suffix=""
+                [[ "$stopped_tag" == *-think ]] && think_suffix="_think"
+                case "$base_tag" in
+                    smollm2-135m) stopped_cfg="experiments/configs/grpo_smollm2_135m${think_suffix}.yaml" ;;
+                    smollm2-360m) stopped_cfg="experiments/configs/grpo_smollm2_360m${think_suffix}.yaml" ;;
+                    qwen25-05b)   stopped_cfg="experiments/configs/grpo_qwen05${think_suffix}.yaml" ;;
+                    tinyllama-11b) stopped_cfg="experiments/configs/grpo_tinyllama${think_suffix}.yaml" ;;
+                    gemma2-2b)    stopped_cfg="experiments/configs/grpo_gemma2${think_suffix}.yaml" ;;
+                esac
             fi
 
             # Determine current stage for eval resume
