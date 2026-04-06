@@ -701,6 +701,12 @@ def truncation_reward(completion: str) -> float:
     ):
         return 1.0
 
+    # Opening code fence without closing ``` → truncated mid-fence.
+    if re.search(
+        r"```(?:json)?\s*", stripped, re.IGNORECASE
+    ) and not re.search(r"```\s*$", stripped):
+        return -1.0
+
     # Only care about bare JSON (the fallback path in extract_code_block)
     if not (stripped.startswith("{") or stripped.startswith("[")):
         # No JSON at all — format_reward already gives 0.0, don't

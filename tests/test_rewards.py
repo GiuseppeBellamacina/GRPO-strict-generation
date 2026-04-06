@@ -342,6 +342,16 @@ class TestTruncationReward:
         text = '<think>Some reasoning.</think>\n{"a": 1,'
         assert truncation_reward(text) == -1.0
 
+    def test_unclosed_fence_truncated(self):
+        """Opening ```json fence without closing ``` → truncated."""
+        text = 'Here is a JSON object:\n\n```json\n{"name": "John", "scores": [1, 2,'
+        assert truncation_reward(text) == -1.0
+
+    def test_prose_then_unclosed_fence(self):
+        """Prose followed by unclosed fence with valid-looking JSON."""
+        text = 'Here is the result:\n```json\n{"a": 1, "b": [1, 2, 3'
+        assert truncation_reward(text) == -1.0
+
 
 class TestRepetitionReward:
     def test_short_text_neutral(self):
