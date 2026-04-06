@@ -32,6 +32,7 @@
 CHECKPOINT="${CHECKPOINT:-}"  # vuoto = auto-detect, oppure path esplicito
 COMPARE="${COMPARE:-0}"       # 0 = solo eval, 1 = anche comparison con baseline
 CURRICULUM="${CURRICULUM:-0}" # 0 = singolo checkpoint, 1 = eval tutti gli stage (implica COMPARE=1)
+SKIP_STAGES="${SKIP_STAGES:-0}" # numero di stage da saltare (per resume eval)
 
 # Curriculum ha priorità su compare
 if [ "$CURRICULUM" = "1" ]; then
@@ -83,6 +84,9 @@ if [ "$COMPARE" = "1" ]; then
 fi
 if [ "$CURRICULUM" = "1" ]; then
     EVAL_ARGS="${EVAL_ARGS} --curriculum"
+fi
+if [ "$SKIP_STAGES" != "0" ] && [ -n "$SKIP_STAGES" ]; then
+    EVAL_ARGS="${EVAL_ARGS} --skip-stages ${SKIP_STAGES}"
 fi
 
 echo ""

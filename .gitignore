@@ -59,4 +59,5 @@ Thumbs.db
 .job_chain
 .chain_pid
 .chain_failed
+.chain_stopped
 .monitor_cache

@@ -114,7 +114,12 @@ while true; do
             LAST_JOB_ID=$(CONFIG="$CFG" EXTRA_ARGS="$EXTRA" sbatch --job-name="train-${TAG}" --parsable cluster/train.sh)
             ;;
         eval)
-            LAST_JOB_ID=$(CONFIG="$CFG" CURRICULUM=1 sbatch --job-name="eval-${TAG}" --parsable cluster/eval.sh)
+            # EXTRA can contain --skip-stages=N for resume
+            SKIP_N=0
+            if echo "$EXTRA" | grep -qP '^--skip-stages=\d+$'; then
+                SKIP_N=$(echo "$EXTRA" | grep -oP '\d+')
+            fi
+            LAST_JOB_ID=$(CONFIG="$CFG" CURRICULUM=1 SKIP_STAGES="$SKIP_N" sbatch --job-name="eval-${TAG}" --parsable cluster/eval.sh)
             ;;
         *)
             echo "[chain] ❌ Tipo sconosciuto: $TYPE — skip"

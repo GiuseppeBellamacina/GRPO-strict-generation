@@ -300,6 +300,12 @@ def main() -> None:
         default=300,
         help="Max test samples to evaluate (default: 300)",
     )
+    parser.add_argument(
+        "--skip-stages",
+        type=int,
+        default=0,
+        help="Skip the first N stages (for resuming interrupted eval)",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -517,6 +523,20 @@ def main() -> None:
         )
         for label, path, _ in eval_targets:
             print(f"  {label}: {path}")
+
+        # Resume support: skip stages already evaluated
+        if args.skip_stages > 0:
+            skipped = eval_targets[: args.skip_stages]
+            eval_targets = eval_targets[args.skip_stages :]
+            print(
+                f"\n[resume] Skipping {len(skipped)} already-evaluated stages:"
+            )
+            for label, path, _ in skipped:
+                print(f"  (skip) {label}")
+            if not eval_targets:
+                print("[resume] All stages already evaluated.")
+                wandb.finish()
+                return
     else:
         eval_targets.append((f"GRPO ({ckpt_name})", ckpt_path, True))
 

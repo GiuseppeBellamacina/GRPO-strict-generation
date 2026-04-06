@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from typing_extensions import Any
 
 
 def plot_per_category_breakdown(

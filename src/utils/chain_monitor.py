@@ -24,6 +24,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PROJ_DIR = (
@@ -1339,28 +1340,57 @@ def _display(
         for sl in running[0].completion_samples:
             print(f"  {sl}")
 
-    # Show metrics table (--metrics): train reward + eval pass@1 from cache
+    # Show metrics table (--metrics): train reward + eval pass@1
+    # Combines live job data with cached data for completed jobs.
     if show_metrics:
         cache = _load_cache()
-        # Collect unique model tags (strip "train-"/"eval-" prefix)
-        model_tags: list[str] = []
-        seen_tags: set[str] = set()
+
+        # Build a merged view: live jobs override cache
+        # {tag: {train_rw, eval_stages}}
+        metrics_data: dict[str, dict[str, Any]] = {}
+        tag_order: list[str] = []
+
+        # 1. Seed from cache pipeline_jobs (preserves order)
         for key in cache.get("pipeline_jobs", []):
             parts = key.split("-", 1)
             if len(parts) == 2:
                 tag = parts[1]
-                if tag not in seen_tags:
-                    seen_tags.add(tag)
-                    model_tags.append(tag)
+                if tag not in metrics_data:
+                    metrics_data[tag] = {
+                        "train_rw": "",
+                        "eval_stages": {},
+                    }
+                    tag_order.append(tag)
+                entry = cache["jobs"].get(key, {})
+                if parts[0] == "train" and entry.get("last_reward"):
+                    metrics_data[tag]["train_rw"] = entry[
+                        "last_reward"
+                    ]
+                if parts[0] == "eval" and entry.get("eval_stages"):
+                    metrics_data[tag]["eval_stages"] = entry[
+                        "eval_stages"
+                    ]
+
+        # 2. Override / add from live jobs
+        for j in jobs:
+            if not j.tag:
+                continue
+            if j.tag not in metrics_data:
+                metrics_data[j.tag] = {
+                    "train_rw": "",
+                    "eval_stages": {},
+                }
+                tag_order.append(j.tag)
+            if j.job_type == "train" and j.last_reward:
+                metrics_data[j.tag]["train_rw"] = j.last_reward
+            if j.job_type == "eval" and j.eval_stages:
+                metrics_data[j.tag]["eval_stages"] = j.eval_stages
 
         # Discover all stage columns across models
-        all_stage_keys: list[str] = (
-            []
-        )  # ordered: baseline, stage_1, ...
+        all_stage_keys: list[str] = []
         stage_set: set[str] = set()
-        for tag in model_tags:
-            eval_entry = cache["jobs"].get(f"eval-{tag}", {})
-            for sk in eval_entry.get("eval_stages", {}):
+        for tag in tag_order:
+            for sk in metrics_data[tag]["eval_stages"]:
                 if sk not in stage_set and sk != "grpo":
                     stage_set.add(sk)
                     all_stage_keys.append(sk)
@@ -1381,13 +1411,12 @@ def _display(
                 return f"Stage {k.split('_')[1]}"
             return k
 
-        # Only show models that have cached data
+        # Only show models that have data
         rows: list[tuple[str, str, dict[str, str]]] = []
-        for tag in model_tags:
-            train_entry = cache["jobs"].get(f"train-{tag}", {})
-            eval_entry = cache["jobs"].get(f"eval-{tag}", {})
-            train_rw = train_entry.get("last_reward", "")
-            stages = eval_entry.get("eval_stages", {})
+        for tag in tag_order:
+            md = metrics_data[tag]
+            train_rw = md["train_rw"]
+            stages = md["eval_stages"]
             if train_rw or stages:
                 rows.append((tag, train_rw, stages))
 

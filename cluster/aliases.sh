@@ -345,10 +345,223 @@ chain-remove() {
     cd "$PROJ_DIR" && bash cluster/run_all.sh --remove "$@"
 }
 
+# Ferma la pipeline senza perdere lo stato (uso: chain-stop [--force])
+# --force: uccidi watcher + cancella tutti i file di stato (ripartenza da zero)
+chain-stop() {
+    local force=0
+    for arg in "$@"; do
+        case "$arg" in
+            --force) force=1 ;;
+            --help|-h)
+                echo "Uso: chain-stop [--force]"
+                echo ""
+                echo "  (default)   Ferma pipeline. Cancella job SLURM attivo + watcher."
+                echo "              Salva lo stato per poter fare chain-start."
+                echo "  --force     Come sopra, ma cancella TUTTI i file di stato."
+                echo "              La pipeline dovrà essere ricominciata da capo."
+                return 0
+                ;;
+        esac
+    done
+
+    cd "$PROJ_DIR"
+
+    # 1. Trova il job SLURM attivo e le sue info
+    local active_job=""
+    local active_name=""
+    active_job=$(squeue --me --noheader --format="%i %j" 2>/dev/null | head -1 | awk '{print $1}')
+    active_name=$(squeue --me --noheader --format="%i %j" 2>/dev/null | head -1 | awk '{print $2}')
+
+    # 2. Cancella il job SLURM attivo
+    if [ -n "$active_job" ]; then
+        scancel "$active_job" 2>/dev/null
+        echo "✅ Job SLURM $active_job ($active_name) cancellato"
+    else
+        echo "⚠️  Nessun job SLURM attivo"
+    fi
+
+    # 3. Uccidi il watcher
+    if [ -f .chain_pid ]; then
+        local pid
+        pid=$(cat .chain_pid)
+        kill "$pid" 2>/dev/null && echo "✅ Watcher (PID $pid) terminato"
+        rm -f .chain_pid
+    fi
+
+    if [ "$force" -eq 1 ]; then
+        # --force: cancella tutto
+        rm -f .job_chain .chain_pid .chain_failed .chain_stopped .monitor_cache
+        echo "🗑️  File di stato cancellati (.job_chain, .chain_failed, .chain_stopped, .monitor_cache)"
+        echo ""
+        echo "Pipeline terminata definitivamente. Per ricominciare: run-all"
+    else
+        # Salva lo stato per chain-start
+        # Determina il job che era attivo quando abbiamo fermato
+        if [ -n "$active_name" ]; then
+            local stopped_type=$(echo "$active_name" | cut -d- -f1)
+            local stopped_tag=$(echo "$active_name" | cut -d- -f2-)
+
+            # Cerca il config corrispondente: scan .job_chain e la catena originale
+            # Primo, cerca nella cache del monitor
+            local stopped_cfg=""
+            stopped_cfg=$(python3 -c "
+import json, pathlib, sys
+cache_path = pathlib.Path('.monitor_cache')
+if not cache_path.exists():
+    sys.exit(1)
+cache = json.loads(cache_path.read_text())
+entry = cache.get('jobs', {}).get('${active_name}', {})
+cfg = entry.get('config', '')
+if cfg:
+    print(cfg)
+else:
+    sys.exit(1)
+" 2>/dev/null || true)
+
+            # Fallback: scan logs for config
+            if [ -z "$stopped_cfg" ]; then
+                stopped_cfg=$(grep ":${stopped_tag}" logs/chain_watcher.log 2>/dev/null | tail -1 | grep -oP '\(([^)]+)\)' | tr -d '()' || true)
+            fi
+
+            # Determine current stage for eval resume
+            # Count only "Stage N: ... Pass@1:" lines (not Baseline, not comparison summary)
+            local stopped_stage=0
+            if [ "$stopped_type" = "eval" ] && [ -n "$active_job" ]; then
+                local logfile="logs/slurm-eval-${active_job}.log"
+                if [ -f "$logfile" ]; then
+                    stopped_stage=$(grep -cP '^Stage \d+.*Pass@1:' "$logfile" 2>/dev/null || echo 0)
+                fi
+            fi
+
+            echo "${stopped_type}:${stopped_cfg}:${stopped_tag}:${stopped_stage}:${active_job}" > .chain_stopped
+            echo "💾 Stato salvato in .chain_stopped:"
+            echo "   Tipo:  $stopped_type"
+            echo "   Tag:   $stopped_tag"
+            echo "   Config: ${stopped_cfg:-sconosciuto}"
+            [ "$stopped_stage" -gt 0 ] && echo "   Stage completati: $stopped_stage"
+        else
+            echo "⚠️  Nessun job attivo da salvare"
+            # Salva un marker vuoto per indicare che la pipeline è stata stoppata
+            echo "none:::0:" > .chain_stopped
+        fi
+        rm -f .chain_failed
+        echo ""
+        echo "Pipeline fermata. Per riprendere: chain-start"
+    fi
+}
+
+# Riprendi la pipeline dopo chain-stop (uso: chain-start)
+chain-start() {
+    cd "$PROJ_DIR"
+
+    if [ ! -f .chain_stopped ]; then
+        echo "❌ Nessun .chain_stopped trovato."
+        echo "   chain-start funziona solo dopo chain-stop (senza --force)."
+        echo "   Per una nuova pipeline: run-all"
+        return 1
+    fi
+
+    local stopped_info
+    stopped_info=$(cat .chain_stopped)
+    local stopped_type=$(echo "$stopped_info" | cut -d: -f1)
+    local stopped_cfg=$(echo "$stopped_info" | cut -d: -f2)
+    local stopped_tag=$(echo "$stopped_info" | cut -d: -f3)
+    local stopped_stage=$(echo "$stopped_info" | cut -d: -f4)
+    local stopped_slurm=$(echo "$stopped_info" | cut -d: -f5)
+
+    echo "============================================"
+    echo "  CHAIN START — Ripresa pipeline"
+    echo "  Date:      $(date)"
+    echo "  Stopped:   $stopped_type $stopped_tag"
+    echo "  Config:    ${stopped_cfg:-sconosciuto}"
+    [ "$stopped_stage" -gt 0 ] && echo "  Stage completati: $stopped_stage"
+    echo "============================================"
+    echo ""
+
+    if [ "$stopped_type" = "none" ]; then
+        echo "ℹ️  La pipeline era già in pausa (nessun job attivo al momento dello stop)."
+        echo "   Riavvio il watcher con i job rimanenti in .job_chain."
+    elif [ "$stopped_type" = "train" ]; then
+        # Reinserisci il train con --resume + eval in testa alla catena
+        local RESUME_CHAIN
+        RESUME_CHAIN=$(mktemp)
+        echo "train:${stopped_cfg}:${stopped_tag}:--resume" > "$RESUME_CHAIN"
+        # Aggiungi eval se non è già il prossimo nella catena
+        local next_in_chain=""
+        [ -f .job_chain ] && [ -s .job_chain ] && next_in_chain=$(head -1 .job_chain)
+        local next_type=$(echo "$next_in_chain" | cut -d: -f1)
+        local next_tag=$(echo "$next_in_chain" | cut -d: -f3)
+        if [ "$next_type" != "eval" ] || [ "$next_tag" != "$stopped_tag" ]; then
+            echo "eval:${stopped_cfg}:${stopped_tag}" >> "$RESUME_CHAIN"
+        fi
+        [ -f .job_chain ] && [ -s .job_chain ] && cat .job_chain >> "$RESUME_CHAIN"
+        mv "$RESUME_CHAIN" .job_chain
+        echo "→ Training $stopped_tag verrà ripreso dall'ultimo checkpoint"
+        echo "→ Eval $stopped_tag verrà eseguito dopo il train"
+    elif [ "$stopped_type" = "eval" ]; then
+        # Reinserisci l'eval con --skip-stages in testa alla catena
+        local RESUME_CHAIN
+        RESUME_CHAIN=$(mktemp)
+        if [ "$stopped_stage" -gt 0 ]; then
+            echo "eval:${stopped_cfg}:${stopped_tag}:--skip-stages=${stopped_stage}" > "$RESUME_CHAIN"
+            echo "→ Eval $stopped_tag riprende da stage $((stopped_stage + 1)) (skip $stopped_stage completati)"
+        else
+            echo "eval:${stopped_cfg}:${stopped_tag}" > "$RESUME_CHAIN"
+            echo "→ Eval $stopped_tag verrà rieseguito da capo"
+        fi
+        [ -f .job_chain ] && [ -s .job_chain ] && cat .job_chain >> "$RESUME_CHAIN"
+        mv "$RESUME_CHAIN" .job_chain
+    fi
+
+    rm -f .chain_stopped .chain_failed
+
+    if [ ! -f .job_chain ] || [ ! -s .job_chain ]; then
+        echo ""
+        echo "⚠️  Nessun job rimanente nella catena."
+        echo "   Per una nuova pipeline: run-all"
+        return 0
+    fi
+
+    local TOTAL
+    TOTAL=$(wc -l < .job_chain)
+    echo ""
+    echo "Catena ($TOTAL job):"
+    cat -n .job_chain
+    echo ""
+
+    # Uccidi eventuale watcher residuo
+    if [ -f .chain_pid ]; then
+        local OLD_PID
+        OLD_PID=$(cat .chain_pid)
+        kill "$OLD_PID" 2>/dev/null
+        rm -f .chain_pid
+    fi
+
+    mkdir -p logs
+    nohup bash cluster/chain_next.sh >> logs/chain_watcher.log 2>&1 &
+    local WATCHER_PID=$!
+    echo "$WATCHER_PID" > .chain_pid
+
+    echo "============================================"
+    echo "  Pipeline ripresa!"
+    echo "  Watcher PID: $WATCHER_PID"
+    echo "  Log: logs/chain_watcher.log"
+    echo "============================================"
+}
+
 # Mostra la catena di job attuale (uso: chain-show)
 chain-show() {
     watcher-status
     echo ""
+    if [ -f "$PROJ_DIR/.chain_stopped" ]; then
+        local info
+        info=$(cat "$PROJ_DIR/.chain_stopped")
+        local st_type=$(echo "$info" | cut -d: -f1)
+        local st_tag=$(echo "$info" | cut -d: -f3)
+        [ "$st_type" != "none" ] && echo "⏸️  Pipeline fermata su: $st_type $st_tag"
+        echo "   Per riprendere: chain-start"
+        echo ""
+    fi
     if [ ! -f "$PROJ_DIR/.job_chain" ] || [ ! -s "$PROJ_DIR/.job_chain" ]; then
         echo "Nessun job in coda."
         return 0
@@ -389,24 +602,50 @@ pip-reset() {
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill clean-model pipeline-monitor claudio pip-clean pip-setup pip-reset unload-aliases install-aliases uninstall-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill clean-model chain-add chain-remove chain-stop chain-start chain-show monitor pip-clean pip-setup pip-reset unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
     echo "Comandi GRPO disponibili:"
+    echo ""
+    echo "── Job management ──"
     echo "   myjobs            — lista job attivi"
     echo "   jobinfo <ID>      — dettagli job"
     echo "   killjob <ID>      — cancella job"
-    echo "   killalljobs       — cancella tutti i miei job"
+    echo "   killalljobs       — cancella tutti i miei job + watcher"
+    echo ""
+    echo "── Log monitoring ──"
     echo "   trainlog <ID>     — segui log training"
     echo "   evallog <ID>      — segui log eval"
     echo "   baselog <ID>      — segui log baseline"
     echo "   lastlog [N]       — segui l'ultimo log (N=ultime N righe)"
-    echo "   tree <DIR> [N]    — albero cartelle (profondità N)"
-    echo "   ltree <DIR>       — albero cartelle compatto"
-    echo "   gpu               — stato GPU"
-    echo "   quota             — uso disco progetto"
-    echo "   proj              — cd al progetto"
+    echo ""
+    echo "── Training & eval ──"
+    echo "   train --config PATH [extra args...]"
+    echo "                     — lancia training singolo"
+    echo "   run-eval --config PATH [--compare] [--curriculum] [--checkpoint PATH]"
+    echo "                     — lancia evaluation singola"
+    echo "   run-all [--think] [--eval-only] [--train-only] [--models=SPEC] [--resume]"
+    echo "                     — lancia pipeline multi-modello"
+    echo ""
+    echo "── Pipeline (chain) ──"
+    echo "   chain-show        — mostra stato pipeline + job in coda"
+    echo "   chain-add [--think] [--models=1,3] [--eval-only]"
+    echo "                     — aggiungi job alla pipeline attiva"
+    echo "   chain-remove --models=1,3"
+    echo "                     — rimuovi job dalla coda"
+    echo "   chain-stop        — ferma pipeline (preserva stato per resume)"
+    echo "   chain-stop --force"
+    echo "                     — ferma + cancella tutti i file di stato"
+    echo "   chain-start       — riprendi pipeline dopo chain-stop"
+    echo "   watcher-status    — controlla se il watcher è attivo"
+    echo "   watcher-kill      — uccidi il watcher (senza salvare stato)"
+    echo ""
+    echo "── Monitor ──"
+    echo "   monitor [--poll N] [--tab] [--samples [N]] [--metrics]"
+    echo "                     — monitor live della pipeline"
+    echo ""
+    echo "── Analisi ──"
     echo "   ckpts [nothink|think]"
     echo "                     — mostra checkpoint"
     echo "   trainlog-table [nothink|think] [--tail N]"
@@ -415,24 +654,21 @@ claudio() {
     echo "                     — grafici training con regressione polinomiale"
     echo "   trainlog-live <ID> — training live come tabella"
     echo ""
-    echo "   train --config PATH [extra args...]"
-    echo "                     — lancia training"
-    echo "   run-eval --config PATH [--compare] [--curriculum] [--checkpoint PATH]"
-    echo "                     — lancia evaluation"
-    echo "   run-all [--think] [--eval-only] [--train-only]"
-    echo "                     — lancia train+eval per tutti i modelli"
-    echo "   watcher-status    — controlla se il watcher è attivo"
-    echo "   watcher-kill      — uccidi il watcher"
+    echo "── Utilità ──"
+    echo "   proj              — cd al progetto"
+    echo "   tree <DIR> [N]    — albero cartelle (profondità N)"
+    echo "   ltree <DIR>       — albero cartelle compatto"
+    echo "   gpu               — stato GPU"
+    echo "   quota             — uso disco progetto"
     echo "   clean-model <TAG> [--grpo|--baseline|--sft|--all] [--think|--nothink]"
     echo "                     — pulisci checkpoints/logs di un modello"
-    echo "                       [--think|--nothink per filtrare variante]"
-    echo "   monitor [--poll N]"
-    echo "                     — monitor live della pipeline (refresh ogni Ns)"
     echo ""
+    echo "── Pip / Environment ──"
     echo "   pip-clean         — rimuovi tutti i pacchetti pip --user"
     echo "   pip-setup         — (re)installa dipendenze (cluster/setup.sh)"
     echo "   pip-reset         — pip-clean + pip-setup"
     echo ""
+    echo "── Meta ──"
     echo "   claudio           — mostra questo messaggio"
     echo "   unload-aliases    — rimuovi alias (sessione corrente)"
     echo "   install-aliases   — aggiungi alias al .bashrc (permanente)"
