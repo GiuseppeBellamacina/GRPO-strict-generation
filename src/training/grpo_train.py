@@ -318,10 +318,34 @@ def _generate_curriculum_dataset(
     return result
 
 
+def _load_stage_weights(model: Any, stage_path: Path) -> None:
+    """Load trained adapter weights from a completed curriculum stage."""
+    from peft import set_peft_model_state_dict
+
+    safetensors_file = stage_path / "adapter_model.safetensors"
+    bin_file = stage_path / "adapter_model.bin"
+
+    if safetensors_file.exists():
+        from safetensors.torch import load_file
+
+        state = load_file(str(safetensors_file))
+    elif bin_file.exists():
+        state = torch.load(
+            str(bin_file), map_location="cpu", weights_only=True
+        )
+    else:
+        raise FileNotFoundError(
+            f"No adapter weights found in {stage_path}"
+        )
+
+    set_peft_model_state_dict(model, state)
+
+
 def _run_curriculum_training(
     config: dict[str, Any],
     model: Any,
     tokenizer: Any,
+    resume: bool = False,
 ) -> None:
     """Run multi-stage curriculum GRPO training.
 
@@ -332,6 +356,10 @@ def _run_curriculum_training(
     The same model object is reused across stages (weights are updated
     in-place by GRPOTrainer), while a fresh optimizer and LR schedule
     are created per stage.
+
+    When *resume* is True, completed stages (whose model has already been
+    saved under ``stages/``) are skipped, and the first incomplete stage
+    is resumed from its latest checkpoint (if any).
     """
     curriculum = config["curriculum"]
     stages = curriculum["stages"]
@@ -381,6 +409,81 @@ def _run_curriculum_training(
 
     cumulative_steps = 0
 
+    # ── Resume: detect completed stages ───────────────────────────────────
+    stages_root = Path(base_output_dir) / "stages"
+    start_stage_idx = 0
+    resume_from_checkpoint: str | None = None
+
+    if resume:
+        # Check which stages already have a saved model in stages/
+        for i, s in enumerate(stages):
+            sname = s.get("name", f"stage_{i + 1}")
+            stage_model_path = stages_root / f"stage_{i + 1}_{sname}"
+            if stage_model_path.exists() and any(
+                stage_model_path.iterdir()
+            ):
+                start_stage_idx = i + 1
+                if is_main_process():
+                    print(
+                        f"[resume] Stage {i + 1} ({sname}) already "
+                        f"completed, skipping"
+                    )
+            else:
+                break
+
+        if start_stage_idx >= len(stages):
+            if is_main_process():
+                print("[resume] All stages already completed!")
+                wandb.finish()
+            return
+
+        # Look for checkpoints in the first incomplete stage
+        inc_stage = stages[start_stage_idx]
+        inc_name = inc_stage.get(
+            "name", f"stage_{start_stage_idx + 1}"
+        )
+        inc_output = str(
+            Path(base_output_dir)
+            / f"stage_{start_stage_idx + 1}_{inc_name}"
+        )
+        inc_ckpts = (
+            sorted(Path(inc_output).glob("checkpoint-*"))
+            if Path(inc_output).exists()
+            else []
+        )
+
+        if inc_ckpts:
+            # Resume from the latest checkpoint inside that stage
+            resume_from_checkpoint = str(inc_ckpts[-1])
+            if is_main_process():
+                print(
+                    f"[resume] Stage {start_stage_idx + 1}: "
+                    f"resuming from {resume_from_checkpoint}"
+                )
+        elif start_stage_idx > 0:
+            # No checkpoint yet — load weights from previous completed stage
+            prev = stages[start_stage_idx - 1]
+            prev_name = prev.get("name", f"stage_{start_stage_idx}")
+            prev_model_path = (
+                stages_root / f"stage_{start_stage_idx}_{prev_name}"
+            )
+            if is_main_process():
+                print(
+                    f"[resume] Loading model from completed "
+                    f"stage {start_stage_idx}: {prev_model_path}"
+                )
+            _load_stage_weights(model, prev_model_path)
+
+        # Cumulative steps for stages we're skipping
+        cumulative_steps = sum(
+            stages[i]["steps"] for i in range(start_stage_idx)
+        )
+        if is_main_process():
+            print(
+                f"[resume] Resuming from stage {start_stage_idx + 1}"
+                f"/{len(stages)} (cumulative_steps={cumulative_steps})"
+            )
+
     # ── Pre-generate balanced eval dataset (so eval scripts find it) ──────
     if is_main_process():
         from src.evaluation.eval_dataset import (
@@ -391,6 +494,10 @@ def _run_curriculum_training(
 
     for stage_idx, stage in enumerate(stages):
         stage_name = stage.get("name", f"stage_{stage_idx + 1}")
+
+        # Skip already-completed stages on resume
+        if stage_idx < start_stage_idx:
+            continue
 
         if is_main_process():
             print(f"\n{'=' * 60}")
@@ -508,7 +615,16 @@ def _run_curriculum_training(
         trainer.remove_callback(WandbCallback)
         trainer.add_callback(TqdmOnlyProgressCallback)
 
-        trainer.train()
+        # Resume from checkpoint if this is the stage being resumed
+        if resume_from_checkpoint is not None:
+            trainer.train(
+                resume_from_checkpoint=resume_from_checkpoint
+            )
+            resume_from_checkpoint = (
+                None  # only for first resumed stage
+            )
+        else:
+            trainer.train()
 
         # 8. Update cumulative step counter
         cumulative_steps += stage["steps"]
@@ -668,7 +784,9 @@ def main() -> None:
     # ── Curriculum mode ───────────────────────────────────────────────────
     curriculum = config.get("curriculum")
     if curriculum and curriculum.get("enabled", True):
-        _run_curriculum_training(config, model, tokenizer)
+        _run_curriculum_training(
+            config, model, tokenizer, resume=args.resume
+        )
         return
 
     # Prepare dataset
