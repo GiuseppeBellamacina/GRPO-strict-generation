@@ -640,8 +640,6 @@ def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
                 job.eval_stages[f"stage_{sm2.group(1)}"] = m.group(2)
             elif "baseline" in label.lower():
                 job.eval_stages["baseline"] = m.group(2)
-            elif "grpo" in label.lower():
-                job.eval_stages["grpo"] = m.group(2)
             if "baseline" in job.eval_label.lower():
                 is_baseline = True
                 job.stage = 0
@@ -1433,9 +1431,12 @@ def _display(
                 and entry.get("eval_stages")
                 and not metrics_data[tag]["eval_stages"]
             ):
-                metrics_data[tag]["eval_stages"] = entry[
-                    "eval_stages"
-                ]
+                stages = {
+                    k: v
+                    for k, v in entry["eval_stages"].items()
+                    if k != "grpo"
+                }
+                metrics_data[tag]["eval_stages"] = stages
 
         # Fixed 4 eval columns: Baseline, Stage 1, Stage 2, Stage 3
         all_stage_keys = ["baseline", "stage_1", "stage_2", "stage_3"]
