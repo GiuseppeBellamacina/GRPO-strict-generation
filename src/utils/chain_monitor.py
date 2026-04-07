@@ -1471,15 +1471,24 @@ def _display(
                 f"  {'─' * (24 + 10 + col_w * len(all_stage_keys))}"
             )
             for tag, rw, stages in rows:
-                # Train reward: cyan
-                rw_str = (
-                    f"{_CYAN}{rw}{_RST}" if rw else f"{_DIM}-{_RST}"
-                )
+                # Train reward: truncate to 4 decimal places
+                if rw:
+                    try:
+                        rw_fmt = f"{float(rw):.4f}"
+                    except ValueError:
+                        rw_fmt = rw
+                    rw_str = f"{_CYAN}{rw_fmt:<10s}{_RST}"
+                else:
+                    rw_str = f"{_DIM}{'-':<10s}{_RST}"
                 # Per-stage pass@1 values
                 stage_strs = []
                 for sk in all_stage_keys:
                     val = stages.get(sk, "")
                     if val:
+                        try:
+                            val = f"{float(val):.4f}"
+                        except ValueError:
+                            pass
                         stage_strs.append(
                             f"{_GREEN}{val:<{col_w}s}{_RST}"
                         )
@@ -1488,7 +1497,7 @@ def _display(
                             f"{_DIM}{'-':<{col_w}s}{_RST}"
                         )
                 stage_cells = "".join(stage_strs)
-                print(f"  {tag:<24s} {rw_str:<21s} {stage_cells}")
+                print(f"  {tag:<24s} {rw_str} {stage_cells}")
 
     # Show completion samples from the active training job
     if show_samples and running and running[0].completion_samples:
