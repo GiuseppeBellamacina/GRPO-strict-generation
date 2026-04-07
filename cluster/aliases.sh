@@ -330,6 +330,11 @@ watcher-kill() {
     fi
 }
 
+# Pulizia workspace (uso: clean [--force])
+clean() {
+    cd "$PROJ_DIR" && bash cluster/clean.sh "$@"
+}
+
 # Pulizia selettiva di un modello (uso: clean-model <TAG> [--all])
 clean-model() {
     cd "$PROJ_DIR" && bash cluster/clean_model.sh "$@"
@@ -621,7 +626,7 @@ pip-reset() {
 # ── Meta ─────────────────────────────────────────────────────────────────────
 
 # Lista di tutti i comandi custom registrati
-_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill clean-model chain-add chain-remove chain-stop chain-start chain-show monitor pip-clean pip-setup pip-reset unload-aliases install-aliases uninstall-aliases"
+_GRPO_ALIASES="myjobs jobinfo killjob killalljobs trainlog evallog baselog lastlog tree ltree gpu quota proj ckpts trainlog-table trainlog-plot trainlog-live train run-eval run-all watcher-status watcher-kill clean clean-model chain-add chain-remove chain-stop chain-start chain-show monitor pip-clean pip-setup pip-reset unload-aliases install-aliases uninstall-aliases"
 
 # Mostra i comandi disponibili
 claudio() {
@@ -680,6 +685,7 @@ claudio() {
     echo "   ltree <DIR>       — albero cartelle compatto"
     echo "   gpu               — stato GPU"
     echo "   quota             — uso disco progetto"
+    echo "   clean             — pulizia workspace (dry-run, usa --force per cancellare)"
     echo "   clean-model <TAG> [--grpo|--baseline|--sft|--all] [--think|--nothink]"
     echo "                     — pulisci checkpoints/logs di un modello"
     echo ""
