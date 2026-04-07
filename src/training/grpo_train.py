@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import torch
 import wandb
 from dotenv import load_dotenv
+from transformers.integrations.integration_utils import WandbCallback
 from transformers.trainer_callback import ProgressCallback
 from trl import GRPOConfig, GRPOTrainer
 
@@ -39,7 +40,7 @@ from src.models.model_loader import load_model_and_tokenizer
 from src.training.callbacks import (
     CompletionSampleCallback,
     CompletionSampleLogger,
-    CurriculumStageCallback,
+    GlobalStepWandbCallback,
     HighPrecisionLogCallback,
     SaveWandbRunIdCallback,
     TqdmOnlyProgressCallback,
@@ -493,7 +494,8 @@ def _run_curriculum_training(
             callbacks=[
                 HighPrecisionLogCallback(),
                 WandbAlertCallback(stage_label=stage_label),
-                CurriculumStageCallback(
+                GlobalStepWandbCallback(
+                    step_offset=cumulative_steps,
                     stage_idx=stage_idx,
                     stage_name=stage_name,
                     difficulty_weights=stage["difficulty_weights"],
@@ -503,6 +505,7 @@ def _run_curriculum_training(
             ],
         )
         trainer.remove_callback(ProgressCallback)
+        trainer.remove_callback(WandbCallback)
         trainer.add_callback(TqdmOnlyProgressCallback)
 
         trainer.train()

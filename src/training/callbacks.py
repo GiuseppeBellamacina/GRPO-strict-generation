@@ -134,24 +134,52 @@ class WandbAlertCallback(TrainerCallback):
         )
 
 
-class CurriculumStageCallback(TrainerCallback):
-    """Log curriculum stage metadata to wandb.
+class SaveWandbRunIdCallback(TrainerCallback):
+    """Persist the wandb run ID to a file so ``--resume`` can continue the
+    same W&B run instead of opening a new one."""
 
-    Logs ``curriculum/stage`` (1, 2, 3) at every logging step so that wandb
-    charts show a clear step-function indicating which stage is active.
-    Stage metadata (name, difficulty weights) is written to wandb.config
-    once at the start of training.
+    def __init__(self, run_id_file: Path) -> None:
+        self._run_id_file = run_id_file
+
+    def on_train_begin(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs: Any,
+    ) -> None:
+        if not state.is_local_process_zero:
+            return
+        if wandb.run is not None:
+            self._run_id_file.write_text(wandb.run.id)
+            print(f"[wandb] Run id saved: {wandb.run.id}")
+
+
+class GlobalStepWandbCallback(TrainerCallback):
+    """Log training metrics to wandb with a cumulative step offset.
+
+    Replaces the default ``WandbCallback`` and ``CurriculumStageCallback``
+    in curriculum training so that all stages share a single continuous
+    x-axis on wandb charts.
+
+    Args:
+        step_offset: Cumulative steps from previous stages.
+        stage_idx: 0-based stage index (logged as 1-based ``curriculum/stage``).
+        stage_name: Human-readable stage name for wandb config.
+        difficulty_weights: Stage difficulty weights for wandb config.
     """
 
     def __init__(
         self,
-        stage_idx: int,
-        stage_name: str,
-        difficulty_weights: dict[str, float],
+        step_offset: int = 0,
+        stage_idx: int = 0,
+        stage_name: str = "",
+        difficulty_weights: dict[str, float] | None = None,
     ) -> None:
+        self._offset = step_offset
         self._stage_idx = stage_idx
         self._stage_name = stage_name
-        self._difficulty_weights = difficulty_weights
+        self._difficulty_weights = difficulty_weights or {}
 
     def on_train_begin(
         self,
@@ -182,32 +210,21 @@ class CurriculumStageCallback(TrainerCallback):
     ) -> None:
         if not state.is_local_process_zero or not logs:
             return
-        if wandb.run is not None:
-            wandb.log(
-                {"curriculum/stage": self._stage_idx + 1},
-                commit=False,
-            )
-
-
-class SaveWandbRunIdCallback(TrainerCallback):
-    """Persist the wandb run ID to a file so ``--resume`` can continue the
-    same W&B run instead of opening a new one."""
-
-    def __init__(self, run_id_file: Path) -> None:
-        self._run_id_file = run_id_file
-
-    def on_train_begin(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        **kwargs: Any,
-    ) -> None:
-        if not state.is_local_process_zero:
+        if wandb.run is None:
             return
-        if wandb.run is not None:
-            self._run_id_file.write_text(wandb.run.id)
-            print(f"[wandb] Run id saved: {wandb.run.id}")
+        rewritten: dict[str, Any] = {}
+        for k, v in logs.items():
+            if k.startswith("eval_"):
+                rewritten[f"eval/{k[5:]}"] = v
+            elif k.startswith("test_"):
+                rewritten[f"test/{k[5:]}"] = v
+            else:
+                rewritten[f"train/{k}"] = v
+        rewritten["train/global_step"] = (
+            state.global_step + self._offset
+        )
+        rewritten["curriculum/stage"] = self._stage_idx + 1
+        wandb.log(rewritten)
 
 
 # ---------------------------------------------------------------------------

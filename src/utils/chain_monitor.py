@@ -175,7 +175,9 @@ def _cache_update_job(job: "JobInfo") -> None:
         if job.job_type == "eval" and job.eval_pass:
             entry["eval_pass"] = job.eval_pass
         if job.job_type == "eval" and job.eval_stages:
-            entry["eval_stages"] = job.eval_stages
+            merged = entry.get("eval_stages", {})
+            merged.update(job.eval_stages)
+            entry["eval_stages"] = merged
 
         if job.last_reward:
             entry["last_reward"] = job.last_reward
@@ -208,8 +210,10 @@ def _cache_enrich_job(job: "JobInfo") -> None:
         job.slurm_id = entry["slurm_id"]
     if not job.eval_pass and entry.get("eval_pass"):
         job.eval_pass = entry["eval_pass"]
-    if not job.eval_stages and entry.get("eval_stages"):
-        job.eval_stages = entry["eval_stages"]
+    if entry.get("eval_stages"):
+        merged = dict(entry["eval_stages"])
+        merged.update(job.eval_stages)
+        job.eval_stages = merged
     if job.stage == 0 and entry.get("stage"):
         job.stage = entry["stage"]
     if not job.stage_name and entry.get("stage_name"):
@@ -633,19 +637,25 @@ def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
         if m:
             job.eval_label = m.group(1)
             job.eval_pass = m.group(2)
-            # Classify into eval_stages
-            label = m.group(1).strip()
-            sm2 = _EVAL_STAGE_NUM.search(label)
-            if sm2:
-                job.eval_stages[f"stage_{sm2.group(1)}"] = m.group(2)
-            elif "baseline" in label.lower():
-                job.eval_stages["baseline"] = m.group(2)
             if "baseline" in job.eval_label.lower():
                 is_baseline = True
                 job.stage = 0
 
         if _EVAL_COMPLETE.search(line):
             job.eval_label = "COMPLETE"
+
+    # Grep the FULL log for Pass@1 results (they scroll out of the tail
+    # window once later stages start generating completions).
+    pass_lines = _grep_lines(log_path, r"Pass@1:", max_count=10)
+    for pl in pass_lines:
+        mp = _EVAL_PASS.search(pl)
+        if mp:
+            label = mp.group(1).strip()
+            sm2 = _EVAL_STAGE_NUM.search(label)
+            if sm2:
+                job.eval_stages[f"stage_{sm2.group(1)}"] = mp.group(2)
+            elif "baseline" in label.lower():
+                job.eval_stages["baseline"] = mp.group(2)
 
     # Count total stages from curriculum log marker
     stage_count_lines = _grep_lines(
