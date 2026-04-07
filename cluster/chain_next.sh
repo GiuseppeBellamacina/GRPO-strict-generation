@@ -128,7 +128,14 @@ while true; do
             if echo "$EXTRA" | grep -qP '^--skip-stages=\d+$'; then
                 SKIP_N=$(echo "$EXTRA" | grep -oP '\d+')
             fi
-            LAST_JOB_ID=$(CONFIG="$CFG" CURRICULUM=1 SKIP_STAGES="$SKIP_N" sbatch --job-name="eval-${TAG}" --parsable cluster/eval.sh)
+            # Auto-detect curriculum from config YAML (don't hardcode CURRICULUM=1)
+            IS_CURRICULUM=$(python3 -c "
+import yaml, sys
+cfg = yaml.safe_load(open('${CFG}'))
+c = cfg.get('curriculum', {})
+print('1' if c and c.get('enabled', True) else '0')
+" 2>/dev/null || echo "0")
+            LAST_JOB_ID=$(CONFIG="$CFG" CURRICULUM="$IS_CURRICULUM" SKIP_STAGES="$SKIP_N" sbatch --job-name="eval-${TAG}" --parsable cluster/eval.sh)
             ;;
         *)
             echo "[chain] ❌ Tipo sconosciuto: $TYPE — skip"

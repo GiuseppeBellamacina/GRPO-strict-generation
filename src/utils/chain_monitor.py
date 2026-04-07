@@ -637,6 +637,15 @@ def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
         if m:
             job.eval_label = m.group(1)
             job.eval_pass = m.group(2)
+            # Classify into eval_stages
+            label = m.group(1).strip()
+            sm2 = _EVAL_STAGE_NUM.search(label)
+            if sm2:
+                job.eval_stages[f"stage_{sm2.group(1)}"] = m.group(2)
+            elif "baseline" in label.lower():
+                job.eval_stages["baseline"] = m.group(2)
+            elif "grpo" in label.lower():
+                job.eval_stages["grpo"] = m.group(2)
             if "baseline" in job.eval_label.lower():
                 is_baseline = True
                 job.stage = 0
@@ -656,6 +665,8 @@ def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
                 job.eval_stages[f"stage_{sm2.group(1)}"] = mp.group(2)
             elif "baseline" in label.lower():
                 job.eval_stages["baseline"] = mp.group(2)
+            elif "grpo" in label.lower():
+                job.eval_stages["grpo"] = mp.group(2)
 
     # Count total stages from curriculum log marker
     stage_count_lines = _grep_lines(
@@ -1102,14 +1113,12 @@ def _estimate_total_eta(job: JobInfo) -> str:
             return ""
 
     if job.job_type == "train" and speed_steps > 0 and job.stage > 0:
-        # At last stage, total == stage ETA, skip
-        if job.stage >= 3:
-            return ""
         secs_per_step = speed_elapsed_s / speed_steps
         # Remaining in current stage
         remaining_current = max(0, job.stage_total - job.step)
         # Future stages: read from log
         future_steps = 0
+        num_stages_total = 0
         if job.slurm_id:
             log_file = _find_log_file(job.job_type, job.slurm_id)
             if log_file:
@@ -1121,12 +1130,22 @@ def _estimate_total_eta(job: JobInfo) -> str:
                     m = _STAGE_START.search(line)
                     if m:
                         all_stages[int(m.group(1))] = int(m.group(2))
+                num_stages_total = len(all_stages)
                 for s_num, s_steps in all_stages.items():
                     if s_num > job.stage:
                         future_steps += s_steps
+        # At last stage, total == stage ETA, skip
+        if num_stages_total > 0 and job.stage >= num_stages_total:
+            return ""
         # If we couldn't read future stages, estimate ~same as current
-        if future_steps == 0 and job.stage < 3:
-            future_steps = job.stage_total * (3 - job.stage)
+        if (
+            future_steps == 0
+            and num_stages_total > 0
+            and job.stage < num_stages_total
+        ):
+            future_steps = job.stage_total * (
+                num_stages_total - job.stage
+            )
         total_remaining = remaining_current + future_steps
         if total_remaining <= 0:
             return ""
@@ -1142,7 +1161,7 @@ def _estimate_total_eta(job: JobInfo) -> str:
         secs_per_batch = speed_elapsed_s / speed_steps
         remaining_current = max(0, job.eval_step_total - job.step)
         # Each stage has same number of batches (same dataset size)
-        total_stages = job.stage_total if job.stage_total > 0 else 3
+        total_stages = job.stage_total if job.stage_total > 0 else 0
         remaining_stages = total_stages - job.stage
         # +1 round for baseline evaluation
         baseline_batches = job.eval_step_total
@@ -1318,7 +1337,12 @@ def _display(
 
         # Build description line
         if j.job_type == "train" and j.stage > 0:
-            desc = f"stage {_WHITE}{j.stage}/3{_RST}, step {_WHITE}{j.step}{_RST}/{j.stage_total}"
+            stage_tot = j.stage_total if j.stage_total > 0 else "?"
+            desc = f"stage {_WHITE}{j.stage}{_RST}, step {_WHITE}{j.step}{_RST}/{stage_tot}"
+        elif j.job_type == "train" and j.step > 0:
+            # Non-curriculum: no stage info, show step/total directly
+            tot = j.stage_total if j.stage_total > 0 else "?"
+            desc = f"step {_WHITE}{j.step}{_RST}/{tot}"
         elif j.job_type == "eval":
             if j.stage > 0:
                 stg = f"stage {j.stage}"
@@ -1443,20 +1467,37 @@ def _display(
                 and entry.get("eval_stages")
                 and not metrics_data[tag]["eval_stages"]
             ):
-                stages = {
-                    k: v
-                    for k, v in entry["eval_stages"].items()
-                    if k != "grpo"
-                }
-                metrics_data[tag]["eval_stages"] = stages
+                metrics_data[tag]["eval_stages"] = entry[
+                    "eval_stages"
+                ]
 
-        # Fixed 4 eval columns: Baseline, Stage 1, Stage 2, Stage 3
-        all_stage_keys = ["baseline", "stage_1", "stage_2", "stage_3"]
+        # Discover all stage columns across models
+        all_stage_keys: list[str] = []
+        stage_set: set[str] = set()
+        for tag in tag_order:
+            for sk in metrics_data[tag]["eval_stages"]:
+                if sk not in stage_set:
+                    stage_set.add(sk)
+                    all_stage_keys.append(sk)
+        # Sort: baseline first, then stage_1, stage_2, ..., then grpo last
+        all_stage_keys.sort(
+            key=lambda k: (
+                -1
+                if k == "baseline"
+                else (
+                    int(k.split("_")[1])
+                    if k.startswith("stage_") and "_" in k
+                    else 99
+                )
+            )
+        )
 
         # Short labels for columns
         def _col_label(k: str) -> str:
             if k == "baseline":
                 return "Baseline"
+            if k == "grpo":
+                return "GRPO"
             if k.startswith("stage_"):
                 return f"Stage {k.split('_')[1]}"
             return k

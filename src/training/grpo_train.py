@@ -417,14 +417,10 @@ def _run_curriculum_training(
             wandb_init_kwargs["id"] = prev_run_id
             wandb_init_kwargs["resume"] = "must"
             if is_main_process():
-                print(
-                    f"[wandb] Resuming run: {prev_run_id}"
-                )
+                print(f"[wandb] Resuming run: {prev_run_id}")
         else:
             if is_main_process():
-                print(
-                    "[wandb] No previous run found, starting new"
-                )
+                print("[wandb] No previous run found, starting new")
 
     if is_main_process():
         wandb.init(**wandb_init_kwargs)
