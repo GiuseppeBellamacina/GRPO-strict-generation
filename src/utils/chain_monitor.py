@@ -257,17 +257,29 @@ def _get_active_job() -> tuple[str, str, str] | None:
 
 
 # ── Chain file parsing ────────────────────────────────────────────────────────
-def _parse_chain_log() -> list[str]:
-    """Parse chain_watcher.log to find submitted job names in order."""
+def _parse_chain_log() -> list[tuple[str, str | None]]:
+    """Parse chain_watcher.log to find submitted job names and SLURM IDs."""
     if not CHAIN_LOG.exists():
         return []
-    submitted: list[str] = []
+    submitted: list[tuple[str, str | None]] = []
     # Lines like: [chain] Sottometto: train smollm2-135m (...) — N rimanenti — date
     pattern = re.compile(r"\[chain\] Sottometto: (\w+) (\S+)")
+    job_id_pattern = re.compile(r"\[chain\] Job ID: (\d+)")
+    pending_name: str | None = None
     for line in CHAIN_LOG.read_text(errors="replace").splitlines():
         m = pattern.search(line)
         if m:
-            submitted.append(f"{m.group(1)}-{m.group(2)}")
+            # Flush previous pending name without ID
+            if pending_name is not None:
+                submitted.append((pending_name, None))
+            pending_name = f"{m.group(1)}-{m.group(2)}"
+            continue
+        m = job_id_pattern.search(line)
+        if m and pending_name is not None:
+            submitted.append((pending_name, m.group(1)))
+            pending_name = None
+    if pending_name is not None:
+        submitted.append((pending_name, None))
     return submitted
 
 
@@ -666,7 +678,7 @@ def _build_pipeline() -> list[JobInfo]:
     seen_names: set[str] = set()
 
     # 1. Already submitted jobs (from chain log)
-    for name in submitted_names:
+    for name, chain_slurm_id in submitted_names:
         if name in seen_names:
             continue
         seen_names.add(name)
@@ -676,6 +688,10 @@ def _build_pipeline() -> list[JobInfo]:
         tag = parts[1] if len(parts) > 1 else name
 
         job = JobInfo(job_type=job_type, config="", tag=tag)
+
+        # Use chain log SLURM ID as fallback
+        if chain_slurm_id:
+            job.slurm_id = chain_slurm_id
 
         # Match to SLURM
         if name in slurm_jobs:
@@ -736,6 +752,14 @@ def _build_pipeline() -> list[JobInfo]:
     for i, job in enumerate(jobs):
         if job.state == "PENDING" and i < last_active_idx:
             job.state = "COMPLETED"
+            # Parse log if we have a SLURM ID (from chain log or cache)
+            if job.slurm_id:
+                log_file = _find_log_file(job.job_type, job.slurm_id)
+                if log_file:
+                    if job.job_type == "train":
+                        _parse_training_log(log_file, job)
+                    else:
+                        _parse_eval_log(log_file, job)
 
     # 1c. Mark RUNNING jobs with no progress yet as STARTING
     for job in jobs:
@@ -1145,24 +1169,8 @@ def _format_status(job: JobInfo) -> str:
     detail = ""
     if job.state in ("RUNNING", "STARTING"):
         pass  # no detail in table row — shown in footer
-    elif job.state == "COMPLETED" and job.job_type == "train":
-        if job.stage_name == "COMPLETE":
-            detail = f" {_GREEN}✓ all 3 stages{_RST}"
-        elif job.stage > 0:
-            detail = f" {_GREEN}completed at stage {job.stage}{_RST}"
-    elif job.state == "COMPLETED" and job.job_type == "eval":
-        if job.eval_stages:
-            parts_list = []
-            bl = job.eval_stages.get("baseline")
-            if bl:
-                parts_list.append(f"BL={bl}")
-            for i in range(1, 10):
-                sv = job.eval_stages.get(f"stage_{i}")
-                if sv:
-                    parts_list.append(f"S{i}={sv}")
-            detail = f" {_GREEN}{' '.join(parts_list)}{_RST}"
-        elif job.eval_pass:
-            detail = f" {_GREEN}pass@1={job.eval_pass}{_RST}"
+    elif job.state == "COMPLETED":
+        pass  # details shown in metrics table
     elif job.state == "FAILED":
         detail = (
             f" {_RED}exit={job.exit_code}{_RST}"
@@ -1398,22 +1406,8 @@ def _display(
                     "eval_stages"
                 ]
 
-        # Discover all stage columns across models
-        all_stage_keys: list[str] = []
-        stage_set: set[str] = set()
-        for tag in tag_order:
-            for sk in metrics_data[tag]["eval_stages"]:
-                if sk not in stage_set and sk != "grpo":
-                    stage_set.add(sk)
-                    all_stage_keys.append(sk)
-        # Sort: baseline first, then stage_1, stage_2, ...
-        all_stage_keys.sort(
-            key=lambda k: (
-                -1
-                if k == "baseline"
-                else int(k.split("_")[1]) if "_" in k else 99
-            )
-        )
+        # Fixed 4 eval columns: Baseline, Stage 1, Stage 2, Stage 3
+        all_stage_keys = ["baseline", "stage_1", "stage_2", "stage_3"]
 
         # Short labels for columns
         def _col_label(k: str) -> str:
