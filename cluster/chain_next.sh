@@ -135,7 +135,7 @@ cfg = yaml.safe_load(open('${CFG}'))
 c = cfg.get('curriculum', {})
 print('1' if c and c.get('enabled', False) else '0')
 " 2>/dev/null || echo "0")
-            LAST_JOB_ID=$(CONFIG="$CFG" CURRICULUM="$IS_CURRICULUM" SKIP_STAGES="$SKIP_N" sbatch --job-name="eval-${TAG}" --parsable cluster/eval.sh)
+            LAST_JOB_ID=$(CONFIG="$CFG" COMPARE=1 CURRICULUM="$IS_CURRICULUM" SKIP_STAGES="$SKIP_N" sbatch --job-name="eval-${TAG}" --parsable cluster/eval.sh)
             ;;
         *)
             echo "[chain] ❌ Tipo sconosciuto: $TYPE — skip"

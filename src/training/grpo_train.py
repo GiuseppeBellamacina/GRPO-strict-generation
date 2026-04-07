@@ -28,7 +28,7 @@ import wandb
 from dotenv import load_dotenv
 from transformers.integrations.integration_utils import WandbCallback
 from transformers.trainer_callback import ProgressCallback
-from trl import GRPOConfig, GRPOTrainer
+from trl import GRPOConfig, GRPOTrainer  # type: ignore[import]
 
 from datasets import Dataset
 from src.datasets.dataloader import (
@@ -64,10 +64,8 @@ def _build_grpo_config(
     reward_weights: list[float] | None = None,
 ) -> GRPOConfig:
     """Build a ``GRPOConfig`` from separated training and GRPO config dicts."""
-    output_dir = training_cfg.get(
-        "output_dir", "experiments/checkpoints/grpo"
-    )
-    log_dir = training_cfg.get("log_dir", "experiments/logs/grpo")
+    output_dir = training_cfg["output_dir"]
+    log_dir = training_cfg["log_dir"]
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(log_dir).mkdir(parents=True, exist_ok=True)
 
@@ -365,9 +363,7 @@ def _run_curriculum_training(
     stages = curriculum["stages"]
     base_output_dir = config["training"]["output_dir"]
     base_data_dir = config["dataset"].get("path", "data/synthetic")
-    log_dir = config["training"].get(
-        "log_dir", "experiments/logs/grpo"
-    )
+    log_dir = config["training"]["log_dir"]
     num_samples = curriculum.get("num_samples", 1500)
     thinking = config.get("dataset", {}).get("thinking", True)
     total_steps = sum(s["steps"] for s in stages)
@@ -733,7 +729,7 @@ def main() -> None:
         default=None,
         metavar="CHECKPOINT_DIR",
         help="Skip training. Evaluate checkpoints in the given directory "
-        "(e.g. experiments/checkpoints/grpo) and select the best one.",
+        "(e.g. experiments/checkpoints/grpo/nothink/curriculum) and select the best one.",
     )
     args = parser.parse_args()
 
@@ -749,12 +745,8 @@ def main() -> None:
     )
 
     if not args.eval_only:
-        base_output = config["training"].get(
-            "output_dir", "experiments/checkpoints/grpo"
-        )
-        base_log = config["training"].get(
-            "log_dir", "experiments/logs/grpo"
-        )
+        base_output = config["training"]["output_dir"]
+        base_log = config["training"]["log_dir"]
 
         if args.resume:
             # Resuming: reuse the latest existing run directories
@@ -880,9 +872,7 @@ def main() -> None:
     # Configure wandb via env vars — the GRPOTrainer handles wandb.init internally
     wandb_cfg = config.get("wandb", {})
     wandb_project = wandb_cfg.get("project", "grpo-strict-generation")
-    log_dir = config["training"].get(
-        "log_dir", "experiments/logs/grpo"
-    )
+    log_dir = config["training"]["log_dir"]
     os.environ["WANDB_PROJECT"] = wandb_project
     os.environ["WANDB_DIR"] = log_dir
     os.environ["WANDB_TAGS"] = ",".join(
@@ -1085,7 +1075,7 @@ def _select_best_checkpoint(
                 ckpt_model = PeftModel.from_pretrained(
                     ckpt_model, str(ckpt_path)
                 )
-                ckpt_model = ckpt_model.merge_and_unload()
+                ckpt_model = ckpt_model.merge_and_unload()  # type: ignore[assignment]
             else:
                 # Full model checkpoint
                 ckpt_config = {

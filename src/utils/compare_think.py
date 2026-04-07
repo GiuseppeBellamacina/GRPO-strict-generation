@@ -399,7 +399,9 @@ def main() -> None:
     if args.all:
         # Determine curriculum variant
         if args.curriculum and args.standard:
-            parser.error("--curriculum and --standard are mutually exclusive.")
+            parser.error(
+                "--curriculum and --standard are mutually exclusive."
+            )
         variant = "standard" if args.standard else "curriculum"
         logs_nt, logs_tk = _logs_base(variant)
 

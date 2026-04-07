@@ -9,7 +9,7 @@ Usage:
 
     # Evaluate a specific checkpoint
     python -m src.evaluation --config experiments/configs/nothink/curriculum/grpo_smollm2_360m.yaml \
-        --checkpoint experiments/checkpoints/grpo/checkpoint-480
+        --checkpoint experiments/checkpoints/grpo/nothink/curriculum/smollm2-360m/checkpoint-480
 """
 
 from __future__ import annotations
@@ -320,9 +320,7 @@ def main() -> None:
         resolve_latest_run(base_output)
     )
 
-    base_log = config["training"].get(
-        "log_dir", "experiments/logs/grpo"
-    )
+    base_log = config["training"]["log_dir"]
 
     # Baseline results live at the base log_dir level (shared across evals)
     if args.baseline_results is None:
@@ -404,9 +402,7 @@ def main() -> None:
 
     # Output directory for eval results
     ckpt_name = Path(ckpt_path).name
-    eval_output = Path(
-        config["training"].get("log_dir", "experiments/logs/grpo")
-    )
+    eval_output = Path(config["training"]["log_dir"])
     eval_output.mkdir(parents=True, exist_ok=True)
     figures_dir = eval_output / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)

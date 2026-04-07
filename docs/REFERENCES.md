@@ -34,26 +34,50 @@
 
    **Relevance**: Motivated our choice of rule-based rewards over neural reward models and our per-component granular reward design.
 
+5. **Explicit Reasoning Makes Better Judges: A Systematic Study on Accuracy, Efficiency, and Robustness**
+   Pratik Jayarao, Himanshu Gupta, Neeraj Varshney, Chaitanya Dwivedi (2025).
+   *arXiv:2509.13332* — [Paper](https://arxiv.org/abs/2509.13332) · [PDF](papers/2509.13332v1.pdf)
+
+   Systematic comparison of "thinking" and "non-thinking" LLMs in the LLM-as-a-judge paradigm using Qwen 3 models (0.6B–4B). Thinking models achieve ~10% higher accuracy with under 2x overhead, while augmentation strategies (few-shot, rubrics) deliver modest gains at >8x cost. Bias analyses show thinking models maintain 6% higher consistency under positional, bandwagon, identity, diversity, and random biases.
+
+   **Relevance**: Supports our think vs nothink experimental design — provides evidence that explicit reasoning improves LLM-as-judge accuracy, efficiency, and robustness.
+
+6. **Thinkless: LLM Learns When to Think**
+   Gongfan Fang, Xinyin Ma, Xinchao Wang (2025).
+   *arXiv:2505.13379* — [Paper](https://arxiv.org/abs/2505.13379) · [PDF](papers/2505.13379v2.pdf)
+
+   Proposes a learnable framework for adaptive reasoning mode selection using control tokens (`<short>` and `<think>`). Introduces Decoupled Group Relative Policy Optimization (DeGRPO), which separates control token loss from response loss to stabilize training and prevent collapse observed in vanilla GRPO. Reduces long-chain thinking usage by 50–90% on benchmarks.
+
+   **Relevance**: Directly relevant to our GRPO training — DeGRPO addresses instabilities observed in vanilla GRPO, and the adaptive think/nothink paradigm parallels our dual-mode experimental setup.
+
+7. **Think-J: Learning to Think for Generative LLM-as-a-Judge**
+   Hui Huang, Yancheng He, Hongli Zhou, Rui Zhang, Wei Liu, Weixun Wang, Jiaheng Liu, Wenbo Su (2026).
+   *arXiv:2505.14268* — [Paper](https://arxiv.org/abs/2505.14268) · [PDF](papers/2505.14268v2.pdf)
+
+   Improves generative LLM-as-a-Judge by learning judgment thinking traces via RL. Proposes both offline RL (critic-based positive/negative example construction) and online RL (rule-based reward feedback) approaches. Surpasses both generative and classifier-based LLM-Judge without extra human annotations.
+
+   **Relevance**: Validates rule-based reward design for training reasoning capabilities and demonstrates RL-based thinking optimization aligning with our reward-driven GRPO approach.
+
 ## Online Resources
 
-5. **Unsloth Documentation**
+8. **Unsloth Documentation**
    [https://unsloth.ai/docs](https://unsloth.ai/docs)
    — Fast LoRA fine-tuning framework; used for accelerated model loading and inference.
 
-6. **AI GRPO — A Deep Dive into Group Relative Policy Optimization**
+9. **AI GRPO — A Deep Dive into Group Relative Policy Optimization**
    Ando AI Blog.
    [https://blog.ando.ai/posts/ai-grpo/](https://blog.ando.ai/posts/ai-grpo/)
    — Conceptual overview of GRPO mechanics and advantage normalisation.
 
-7. **Fine-Tuning GRPO with LLM Judge: From Zero to Production**
-   Laurent Bometon, Medium (2025).
-   [https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd](https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd)
-   — Practical GRPO training walkthrough with reward function examples.
+10. **Fine-Tuning GRPO with LLM Judge: From Zero to Production**
+    Laurent Bometon, Medium (2025).
+    [https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd](https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd)
+    — Practical GRPO training walkthrough with reward function examples.
 
-8. **Guide to RL Environments for LLMs**
-   Patronus AI.
-   [https://www.patronus.ai/guide-to-rl-environments](https://www.patronus.ai/guide-to-rl-environments)
-   — Survey of RL environments and reward strategies for language model alignment.
+11. **Guide to RL Environments for LLMs**
+    Patronus AI.
+    [https://www.patronus.ai/guide-to-rl-environments](https://www.patronus.ai/guide-to-rl-environments)
+    — Survey of RL environments and reward strategies for language model alignment.
 
 ## BibTeX
 
@@ -96,5 +120,35 @@
       archivePrefix={arXiv},
       primaryClass={cs.LG},
       url={https://arxiv.org/abs/2504.13958},
+}
+
+@misc{jayarao2025explicitreasoningmakesbetter,
+      title={Explicit Reasoning Makes Better Judges: A Systematic Study on Accuracy, Efficiency, and Robustness},
+      author={Pratik Jayarao and Himanshu Gupta and Neeraj Varshney and Chaitanya Dwivedi},
+      year={2025},
+      eprint={2509.13332},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2509.13332},
+}
+
+@misc{fang2025thinklessllmlearnsthink,
+      title={Thinkless: LLM Learns When to Think},
+      author={Gongfan Fang and Xinyin Ma and Xinchao Wang},
+      year={2025},
+      eprint={2505.13379},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2505.13379},
+}
+
+@misc{huang2026thinkjlearningthinkgenerative,
+      title={Think-J: Learning to Think for Generative LLM-as-a-Judge},
+      author={Hui Huang and Yancheng He and Hongli Zhou and Rui Zhang and Wei Liu and Weixun Wang and Jiaheng Liu and Wenbo Su},
+      year={2026},
+      eprint={2505.14268},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2505.14268},
 }
 ```

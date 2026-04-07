@@ -344,7 +344,7 @@ Il flag `--resume` trova l'ultimo checkpoint e riprende da lì.
 Per valutare i checkpoint senza riaddestrare:
 
 ```bash
-EXTRA_ARGS="--eval-only experiments/checkpoints/grpo/nothink"
+EXTRA_ARGS="--eval-only experiments/checkpoints/grpo/nothink/curriculum"
 ```
 
 ---
