@@ -379,7 +379,12 @@ def _run_curriculum_training(
 
     # Initialize a single wandb run that spans all stages.
     # GRPOTrainer detects the existing run and reuses it.
-    run_name = wandb_cfg.get("run_name", "grpo-curriculum")
+    from datetime import datetime as _dt
+
+    base_run_name = wandb_cfg.get("run_name", "grpo-curriculum")
+    run_name = (
+        f"{base_run_name}-{_dt.now().strftime('%Y%m%d_%H%M%S')}"
+    )
 
     # On resume, try to continue the same wandb run
     wandb_init_kwargs: dict[str, Any] = dict(

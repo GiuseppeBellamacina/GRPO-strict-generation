@@ -134,11 +134,12 @@ def main() -> None:
     print(f"[baseline] Run: {eval_run_id}")
     print(f"[baseline]   results → {eval_output_dir}")
     os.environ["WANDB_DIR"] = eval_output_dir
+    baseline_run_name = wandb_cfg.get(
+        "run_name", f"baseline-{model_cfg['name'].split('/')[-1]}"
+    )
     wandb.init(
         project=wandb_cfg.get("project", "grpo-strict-generation"),
-        name=wandb_cfg.get(
-            "run_name", f"baseline-{model_cfg['name'].split('/')[-1]}"
-        ),
+        name=f"{baseline_run_name}-{eval_run_id}",
         config=config,
         tags=wandb_cfg.get(
             "tags", ["baseline", model_cfg["name"].split("/")[-1]]

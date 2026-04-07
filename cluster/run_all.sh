@@ -180,8 +180,8 @@ for think_dir in "${THINK_SET[@]}"; do
         CFG_BASE="experiments/configs/${think_dir}/${curric_dir}"
         # Suffisso tag per distinguere varianti nella pipeline
         TAG_SUFFIX=""
-        [ "$think_dir" = "think" ]    && TAG_SUFFIX="${TAG_SUFFIX}-think"
-        [ "$curric_dir" = "standard" ] && TAG_SUFFIX="${TAG_SUFFIX}-std"
+        [ "$think_dir" = "think" ]       && TAG_SUFFIX="${TAG_SUFFIX}-think"
+        [ "$curric_dir" = "curriculum" ] && TAG_SUFFIX="${TAG_SUFFIX}-cur"
         for bm in "${BASE_MODELS[@]}"; do
             base_tag=$(echo "$bm" | cut -d: -f1)
             cfg_file=$(echo "$bm" | cut -d: -f2)

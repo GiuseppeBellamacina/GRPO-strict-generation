@@ -527,14 +527,14 @@ chain-stop() {
             stopped_cfg=$(grep "Sottometto: ${stopped_type} ${stopped_tag} " logs/chain_watcher.log 2>/dev/null | tail -1 | sed -n 's/.*(\([^)]*\)).*/\1/p' || true)
 
             # 2. Fallback: derive from tag name (deterministic mapping)
-            #    Tag format: base[-think][-std] → path: {think|nothink}/{curriculum|standard}/grpo_*.yaml
+            #    Tag format: base[-think][-cur] → path: {think|nothink}/{curriculum|standard}/grpo_*.yaml
             if [ -z "$stopped_cfg" ]; then
                 local base_tag="$stopped_tag"
                 local think_dir="nothink"
-                local curric_dir="curriculum"
+                local curric_dir="standard"
                 # Strip suffixes to get base model name
-                base_tag="${base_tag%-std}"
-                [[ "$stopped_tag" == *-std* ]] && curric_dir="standard"
+                base_tag="${base_tag%-cur}"
+                [[ "$stopped_tag" == *-cur* ]] && curric_dir="curriculum"
                 base_tag="${base_tag%-think}"
                 [[ "$stopped_tag" == *-think* ]] && think_dir="think"
                 case "$base_tag" in
@@ -596,9 +596,9 @@ chain-start() {
     if [ -z "$stopped_cfg" ] && [ "$stopped_type" != "none" ]; then
         local base_tag="$stopped_tag"
         local think_dir="nothink"
-        local curric_dir="curriculum"
-        base_tag="${base_tag%-std}"
-        [[ "$stopped_tag" == *-std* ]] && curric_dir="standard"
+        local curric_dir="standard"
+        base_tag="${base_tag%-cur}"
+        [[ "$stopped_tag" == *-cur* ]] && curric_dir="curriculum"
         base_tag="${base_tag%-think}"
         [[ "$stopped_tag" == *-think* ]] && think_dir="think"
         case "$base_tag" in
