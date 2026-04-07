@@ -45,7 +45,7 @@ def resolve_run_dir(
             latest -> train_20260403_120000
 
     Args:
-        base_dir: Parent directory (e.g. ``experiments/checkpoints/grpo/nothink/smollm2-135m``).
+        base_dir: Parent directory (e.g. ``experiments/checkpoints/grpo/nothink/curriculum/smollm2-135m``).
         prefix: Name prefix for the subdirectory (``train``, ``eval``, …).
 
     Returns:

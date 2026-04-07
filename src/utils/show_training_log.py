@@ -1,11 +1,11 @@
 """Display training log from trainer_state.json as a formatted table or plot.
 
 Usage:
-    python -m src.utils.show_training_log experiments/checkpoints/grpo/stage_1_format_basics/checkpoint-720
-    python -m src.utils.show_training_log experiments/checkpoints/grpo/stage_1_format_basics/checkpoint-720 --cols step,loss,reward,learning_rate
-    python -m src.utils.show_training_log experiments/checkpoints/grpo/ --last
-    python -m src.utils.show_training_log experiments/checkpoints/grpo/ --plot          # genera grafici PNG
-    python -m src.utils.show_training_log experiments/checkpoints/grpo/ --plot --deg 5  # grado regressione
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/nothink/curriculum/smollm2-135m/stage_1_format_basics/checkpoint-720
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/nothink/curriculum/smollm2-135m/stage_1_format_basics/checkpoint-720 --cols step,loss,reward,learning_rate
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/nothink/standard/ --last
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/nothink/curriculum/ --plot          # genera grafici PNG
+    python -m src.utils.show_training_log experiments/checkpoints/grpo/nothink/curriculum/ --plot --deg 5  # grado regressione
 """
 
 from __future__ import annotations

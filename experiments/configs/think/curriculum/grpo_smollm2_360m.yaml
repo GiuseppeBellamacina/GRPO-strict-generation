@@ -60,8 +60,8 @@ training:
   logging_steps: 5
   save_steps: 60
   save_total_limit: 3
-  output_dir: "experiments/checkpoints/grpo/think/smollm2-360m"
-  log_dir: "experiments/logs/grpo/think/smollm2-360m"
+  output_dir: "experiments/checkpoints/grpo/think/curriculum/smollm2-360m"
+  log_dir: "experiments/logs/grpo/think/curriculum/smollm2-360m"
 
 # --- Parametri GRPO ---
 grpo:

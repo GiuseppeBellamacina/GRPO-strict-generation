@@ -443,5 +443,5 @@ quota -s
 # Pulisci cache HuggingFace:
 rm -rf ~/.cache/huggingface/hub/models--*/.no_exist*
 # Rimuovi checkpoint vecchi:
-ls -la experiments/checkpoints/grpo/nothink/
+ls -la experiments/checkpoints/grpo/nothink/curriculum/
 ```

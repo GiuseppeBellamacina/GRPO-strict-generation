@@ -57,8 +57,8 @@ training:
   logging_steps: 5
   save_steps: 60
   save_total_limit: 3
-  output_dir: "experiments/checkpoints/grpo/nothink/qwen25-05b"
-  log_dir: "experiments/logs/grpo/nothink/qwen25-05b"
+  output_dir: "experiments/checkpoints/grpo/nothink/curriculum/qwen25-05b"
+  log_dir: "experiments/logs/grpo/nothink/curriculum/qwen25-05b"
 
 # --- Parametri GRPO ---
 grpo:

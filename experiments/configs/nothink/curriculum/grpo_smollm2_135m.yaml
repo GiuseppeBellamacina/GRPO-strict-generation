@@ -57,8 +57,8 @@ training:
   logging_steps: 5
   save_steps: 60
   save_total_limit: 3
-  output_dir: "experiments/checkpoints/grpo/nothink/smollm2-135m"
-  log_dir: "experiments/logs/grpo/nothink/smollm2-135m"
+  output_dir: "experiments/checkpoints/grpo/nothink/curriculum/smollm2-135m"
+  log_dir: "experiments/logs/grpo/nothink/curriculum/smollm2-135m"
 
 # --- Parametri GRPO ---
 grpo:

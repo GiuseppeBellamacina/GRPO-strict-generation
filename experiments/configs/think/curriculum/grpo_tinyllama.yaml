@@ -60,8 +60,8 @@ training:
   logging_steps: 5
   save_steps: 60
   save_total_limit: 3
-  output_dir: "experiments/checkpoints/grpo/think/tinyllama-11b"
-  log_dir: "experiments/logs/grpo/think/tinyllama-11b"
+  output_dir: "experiments/checkpoints/grpo/think/curriculum/tinyllama-11b"
+  log_dir: "experiments/logs/grpo/think/curriculum/tinyllama-11b"
 
 # --- Parametri GRPO ---
 grpo:

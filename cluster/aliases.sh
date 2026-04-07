@@ -164,27 +164,29 @@ ckpts() {
     fi
     local base="$PROJ_DIR/experiments/checkpoints/grpo"
     for v in "${think_set[@]}"; do
-        [ -d "$base/$v" ] || continue
-        echo "──── $v ────"
-        for model_dir in "$base/$v"/*/; do
-            [ -d "$model_dir" ] || continue
-            local model=$(basename "$model_dir")
-            echo "=== $model ==="
-            # Checkpoint intermedi (per stage)
-            for d in "$model_dir"stage_*/; do
-                if [ -d "$d" ]; then
-                    echo "  $(basename "$d"):"
-                    ls -d "$d"checkpoint-* 2>/dev/null | while read -r c; do echo "    $(basename "$c")"; done
-                fi
-            done
-            # Modelli finali (stages/)
-            if [ -d "$model_dir/stages" ]; then
-                echo "  stages/:"
-                ls -d "$model_dir"stages/stage_*/ 2>/dev/null | while read -r s; do
-                    echo "    $(basename "$s")"
+        for c in "${curric_set[@]}"; do
+            [ -d "$base/$v/$c" ] || continue
+            echo "──── $v / $c ────"
+            for model_dir in "$base/$v/$c"/*/; do
+                [ -d "$model_dir" ] || continue
+                local model=$(basename "$model_dir")
+                echo "=== $model ==="
+                # Checkpoint intermedi (per stage)
+                for d in "$model_dir"stage_*/; do
+                    if [ -d "$d" ]; then
+                        echo "  $(basename "$d"):"
+                        ls -d "$d"checkpoint-* 2>/dev/null | while read -r c2; do echo "    $(basename "$c2")"; done
+                    fi
                 done
-            fi
-            echo ""
+                # Modelli finali (stages/)
+                if [ -d "$model_dir/stages" ]; then
+                    echo "  stages/:"
+                    ls -d "$model_dir"stages/stage_*/ 2>/dev/null | while read -r s; do
+                        echo "    $(basename "$s")"
+                    done
+                fi
+                echo ""
+            done
         done
     done
 }
@@ -212,20 +214,25 @@ trainlog-table() {
     if [ "$flag_curriculum" -eq 1 ] && [ "$flag_standard" -eq 1 ]; then
         echo "❌ --curriculum e --standard sono mutualmente esclusivi."; return 1
     fi
-    local think_set=()
+    local think_set=() curric_set=()
     if [ "$flag_all" -eq 1 ]; then
         [ "$flag_think" -eq 1 ] && think_set=("think") || { [ "$flag_nothink" -eq 1 ] && think_set=("nothink") || think_set=("nothink" "think"); }
+        [ "$flag_curriculum" -eq 1 ] && curric_set=("curriculum") || { [ "$flag_standard" -eq 1 ] && curric_set=("standard") || curric_set=("curriculum" "standard"); }
     else
         local has_t=$((flag_think + flag_nothink)) has_c=$((flag_curriculum + flag_standard))
         if [ "$has_t" -eq 0 ] || [ "$has_c" -eq 0 ]; then
             echo "❌ Servono --think/--nothink + --curriculum/--standard, oppure --all."
             return 1
         fi
-        [ "$flag_think" -eq 1 ]   && think_set=("think")
-        [ "$flag_nothink" -eq 1 ] && think_set=("nothink")
+        [ "$flag_think" -eq 1 ]      && think_set=("think")
+        [ "$flag_nothink" -eq 1 ]    && think_set=("nothink")
+        [ "$flag_curriculum" -eq 1 ] && curric_set=("curriculum")
+        [ "$flag_standard" -eq 1 ]   && curric_set=("standard")
     fi
     for v in "${think_set[@]}"; do
-        cd "$PROJ_DIR" && python3 -m src.utils.show_training_log "experiments/checkpoints/grpo/$v" "${extra_args[@]}"
+        for c in "${curric_set[@]}"; do
+            cd "$PROJ_DIR" && python3 -m src.utils.show_training_log "experiments/checkpoints/grpo/$v/$c" "${extra_args[@]}"
+        done
     done
 }
 
@@ -251,20 +258,25 @@ trainlog-plot() {
     if [ "$flag_curriculum" -eq 1 ] && [ "$flag_standard" -eq 1 ]; then
         echo "❌ --curriculum e --standard sono mutualmente esclusivi."; return 1
     fi
-    local think_set=()
+    local think_set=() curric_set=()
     if [ "$flag_all" -eq 1 ]; then
         [ "$flag_think" -eq 1 ] && think_set=("think") || { [ "$flag_nothink" -eq 1 ] && think_set=("nothink") || think_set=("nothink" "think"); }
+        [ "$flag_curriculum" -eq 1 ] && curric_set=("curriculum") || { [ "$flag_standard" -eq 1 ] && curric_set=("standard") || curric_set=("curriculum" "standard"); }
     else
         local has_t=$((flag_think + flag_nothink)) has_c=$((flag_curriculum + flag_standard))
         if [ "$has_t" -eq 0 ] || [ "$has_c" -eq 0 ]; then
             echo "❌ Servono --think/--nothink + --curriculum/--standard, oppure --all."
             return 1
         fi
-        [ "$flag_think" -eq 1 ]   && think_set=("think")
-        [ "$flag_nothink" -eq 1 ] && think_set=("nothink")
+        [ "$flag_think" -eq 1 ]      && think_set=("think")
+        [ "$flag_nothink" -eq 1 ]    && think_set=("nothink")
+        [ "$flag_curriculum" -eq 1 ] && curric_set=("curriculum")
+        [ "$flag_standard" -eq 1 ]   && curric_set=("standard")
     fi
     for v in "${think_set[@]}"; do
-        cd "$PROJ_DIR" && python3 -m src.utils.show_training_log "experiments/checkpoints/grpo/$v" --plot "${extra_args[@]}"
+        for c in "${curric_set[@]}"; do
+            cd "$PROJ_DIR" && python3 -m src.utils.show_training_log "experiments/checkpoints/grpo/$v/$c" --plot "${extra_args[@]}"
+        done
     done
 }
 

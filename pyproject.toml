@@ -32,6 +32,7 @@ dependencies = [
     "pyyaml",
     "tensorboard",
     "wandb",
+    "weave",
     "python-dotenv",
     "tqdm",
     "jupyter",

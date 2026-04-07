@@ -5,11 +5,14 @@ and produces side-by-side bar charts + delta analysis.
 
 Usage:
     python -m src.utils.compare_think \
-        --no-think experiments/logs/grpo/nothink/gemma2-2b \
-        --think    experiments/logs/grpo/think/gemma2-2b
+        --no-think experiments/logs/grpo/nothink/curriculum/gemma2-2b \
+        --think    experiments/logs/grpo/think/curriculum/gemma2-2b
 
-    # Or compare all 5 models at once:
-    python -m src.utils.compare_think --all
+    # Or compare all 5 models at once (curriculum variant):
+    python -m src.utils.compare_think --all --curriculum
+
+    # Standard variant:
+    python -m src.utils.compare_think --all --standard
 """
 
 from __future__ import annotations
@@ -34,6 +37,14 @@ MODELS = {
 
 LOGS_NOTHINK = Path("experiments/logs/grpo/nothink")
 LOGS_THINK = Path("experiments/logs/grpo/think")
+
+
+def _logs_base(variant: str) -> tuple[Path, Path]:
+    """Return (nothink_base, think_base) for the given curriculum variant."""
+    return (
+        LOGS_NOTHINK / variant,
+        LOGS_THINK / variant,
+    )
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
@@ -366,6 +377,16 @@ def main() -> None:
         help="Compare all 5 models using default log dir structure",
     )
     parser.add_argument(
+        "--curriculum",
+        action="store_true",
+        help="Use curriculum variant logs (default when --all)",
+    )
+    parser.add_argument(
+        "--standard",
+        action="store_true",
+        help="Use standard variant logs",
+    )
+    parser.add_argument(
         "--output-dir",
         type=str,
         default="experiments/logs/figures",
@@ -376,10 +397,16 @@ def main() -> None:
     out_dir = Path(args.output_dir)
 
     if args.all:
+        # Determine curriculum variant
+        if args.curriculum and args.standard:
+            parser.error("--curriculum and --standard are mutually exclusive.")
+        variant = "standard" if args.standard else "curriculum"
+        logs_nt, logs_tk = _logs_base(variant)
+
         all_results: dict[str, dict[str, dict[str, Any]]] = {}
         for display_name, dir_suffix in MODELS.items():
-            nt_dir = LOGS_NOTHINK / dir_suffix
-            tk_dir = LOGS_THINK / dir_suffix
+            nt_dir = logs_nt / dir_suffix
+            tk_dir = logs_tk / dir_suffix
 
             nt_summary = extract_metrics_summary(nt_dir)
             tk_summary = extract_metrics_summary(tk_dir)
