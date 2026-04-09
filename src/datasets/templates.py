@@ -800,7 +800,7 @@ POOLS: dict[str, dict[str, str | list[Template]]] = {
 }
 
 DIFFICULTY_WEIGHTS: dict[str, float] = {
-    "simple": 0.10,
+    "simple": 0.20,
     "medium": 0.30,
-    "hard": 0.60,
+    "hard": 0.50,
 }
