@@ -87,7 +87,9 @@ class JobInfo:
     eval_step_total: int = 0  # total generation batches for eval
     exit_code: str = ""
     elapsed: str = ""  # elapsed time from squeue (e.g. "12:34")
-    error_type: str = ""  # error classification (OOM, CUDA_ERROR, TIMEOUT, etc.)
+    error_type: str = (
+        ""  # error classification (OOM, CUDA_ERROR, TIMEOUT, etc.)
+    )
     error_snippet: str = ""  # short error description from log
     tqdm_elapsed: str = ""  # elapsed time from tqdm bar
     tqdm_eta: str = ""  # remaining time from tqdm bar
@@ -246,7 +248,9 @@ def _load_errors() -> dict[str, list[dict]]:
         return {}
     errors: dict[str, list[dict]] = {}
     try:
-        for line in ERRORS_FILE.read_text(encoding="utf-8").splitlines():
+        for line in ERRORS_FILE.read_text(
+            encoding="utf-8"
+        ).splitlines():
             line = line.strip()
             if not line:
                 continue
@@ -591,6 +595,17 @@ def _parse_training_log(log_path: Path, job: JobInfo) -> None:
 
     # 3. Get current step from last lines (step= or tqdm progress bar)
     tail = _tail_lines(log_path, n=1500)
+
+    # 3a. For non-curriculum training, extract max_steps from hyperparams log
+    if job.stage_total == 0:
+        max_steps_lines = _grep_lines(
+            log_path, r"max_steps=", max_count=1
+        )
+        for line in max_steps_lines:
+            ms = re.search(r"max_steps=(\d+)", line)
+            if ms:
+                job.stage_total = int(ms.group(1))
+                break
 
     # 3b. Extract completion samples — use grep to find the last sample
     # block reliably, even when tqdm/metric lines push it out of the tail
@@ -1071,7 +1086,11 @@ def _build_pipeline() -> list[JobInfo]:
                 last_unresolved = [
                     e for e in errs if not e.get("resolved", False)
                 ]
-                err = last_unresolved[-1] if last_unresolved else errs[-1]
+                err = (
+                    last_unresolved[-1]
+                    if last_unresolved
+                    else errs[-1]
+                )
                 job.error_type = err.get("error_type", "")
                 job.error_snippet = err.get("error_snippet", "")
 
