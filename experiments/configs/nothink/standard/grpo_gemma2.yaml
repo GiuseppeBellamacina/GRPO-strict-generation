@@ -1,9 +1,8 @@
 # ============================================================================
 # GRPO training config — Gemma-2-2B-it — Standard (no curriculum)
 #
-# Gemma 2 2B 4-bit ≈ 2 GB. fast_inference (vLLM) disabilitato: la KV cache
-# pre-allocata sfora la shard SLURM da 22 GB. Unsloth resta attivo per i
-# kernel fused e il gradient checkpointing.
+# Gemma 2 2B 4-bit ≈ 2 GB. fast_inference (vLLM) attivo con
+# gpu_memory_utilization=0.35 e vllm_standby per restare entro la VRAM.
 # Training diretto su 2500 step con distribuzione uniforme delle difficoltà.
 #
 # Usato da:
@@ -18,10 +17,10 @@ model:
   quantization: "4bit"
   dtype: "bfloat16"
   use_unsloth: true
-  fast_inference: false
+  fast_inference: true
   max_seq_length: 2048
-  gpu_memory_utilization: 0.45
-  vllm_standby: false
+  gpu_memory_utilization: 0.35
+  vllm_standby: true
 
 # --- LoRA adapters ---
 lora:
@@ -66,7 +65,7 @@ training:
 
 # --- Parametri GRPO ---
 grpo:
-  num_generations: 4
+  num_generations: 8
   max_completion_length: 768
   max_prompt_length: 512
   beta: 0.04

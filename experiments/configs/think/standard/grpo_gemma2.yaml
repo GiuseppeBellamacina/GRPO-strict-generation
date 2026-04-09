@@ -5,7 +5,7 @@
 #   - dataset.thinking: true  → system prompt chiede <think>...</think>
 #   - weight_reasoning: 0.25  → incentivo al ragionamento
 #   - max_completion_length +512  → spazio extra per il blocco think
-#   - fast_inference resta false (limiti KV cache L40S)
+#   - fast_inference attivo con gpu_memory_utilization=0.35
 #   - curriculum: enabled: false
 #
 # Usato da:
@@ -20,10 +20,10 @@ model:
   quantization: "4bit"
   dtype: "bfloat16"
   use_unsloth: true
-  fast_inference: false
+  fast_inference: true
   max_seq_length: 2048
-  gpu_memory_utilization: 0.45
-  vllm_standby: false
+  gpu_memory_utilization: 0.35
+  vllm_standby: true
 
 # --- LoRA adapters ---
 lora:
@@ -68,7 +68,7 @@ training:
 
 # --- Parametri GRPO ---
 grpo:
-  num_generations: 4
+  num_generations: 8
   max_completion_length: 1280
   max_prompt_length: 512
   beta: 0.04
