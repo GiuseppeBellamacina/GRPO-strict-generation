@@ -5,7 +5,7 @@
 #   - dataset.thinking: true  → system prompt chiede <think>...</think>
 #   - weight_reasoning: 0.30  → forte incentivo al ragionamento
 #   - max_completion_length +512  → spazio extra per il blocco think
-#   - fast_inference attivo con gpu_memory_utilization=0.35
+#   - fast_inference attivo con gpu_memory_utilization=0.30
 #
 # Usato da:
 #   CONFIG=experiments/configs/think/curriculum/grpo_gemma2.yaml sbatch cluster/train.sh
@@ -21,7 +21,7 @@ model:
   use_unsloth: true
   fast_inference: true
   max_seq_length: 2048
-  gpu_memory_utilization: 0.35
+  gpu_memory_utilization: 0.30
   vllm_standby: true
 
 # --- LoRA adapters ---

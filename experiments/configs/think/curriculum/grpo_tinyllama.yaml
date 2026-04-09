@@ -20,7 +20,7 @@ model:
   use_unsloth: true
   fast_inference: true
   max_seq_length: 2048
-  gpu_memory_utilization: 0.40
+  gpu_memory_utilization: 0.35
   vllm_standby: true
 
 # --- LoRA adapters ---

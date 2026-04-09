@@ -2,7 +2,7 @@
 # GRPO training config — Gemma-2-2B-it — Cluster DMI (L40S)
 #
 # Gemma 2 2B 4-bit ≈ 2 GB. fast_inference (vLLM) attivo con
-# gpu_memory_utilization=0.35 e vllm_standby per restare entro la VRAM.
+# gpu_memory_utilization=0.30 e vllm_standby per restare entro la VRAM.
 #
 # Usato da:
 #   CONFIG=experiments/configs/nothink/curriculum/grpo_gemma2.yaml sbatch cluster/train.sh
@@ -18,7 +18,7 @@ model:
   use_unsloth: true
   fast_inference: true
   max_seq_length: 2048
-  gpu_memory_utilization: 0.35
+  gpu_memory_utilization: 0.30
   vllm_standby: true
 
 # --- LoRA adapters ---
