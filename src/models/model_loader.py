@@ -128,8 +128,8 @@ def apply_lora(
         bias="none",
     )
 
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
+    model = get_peft_model(model, lora_config)  # type: ignore[assignment]
+    model.print_trainable_parameters()  # type: ignore[attr-defined]
     return model
 
 
@@ -241,6 +241,9 @@ def _load_with_unsloth(
         fi_kwargs["max_lora_rank"] = lora_cfg.get("r", 16)
         fi_kwargs["gpu_memory_utilization"] = model_cfg.get(
             "gpu_memory_utilization", 0.9
+        )
+        fi_kwargs["unsloth_vllm_standby"] = model_cfg.get(
+            "vllm_standby", False
         )
         if is_main_process():
             print("fast_inference abilitato (vLLM backend)")

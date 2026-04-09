@@ -815,9 +815,12 @@ def main() -> None:
         os.environ["UNSLOTH_VLLM_STANDBY"] = (
             "1" if vllm_standby else "0"
         )
+        # Prevent Unsloth from overriding our gpu_memory_utilization
+        if vllm_standby:
+            os.environ["UNSLOTH_VLLM_STANDBY_UTIL_OVERRIDE"] = "1"
         if is_main_process():
             print(
-                f"[grpo] UNSLOTH_VLLM_STANDBY={os.environ['UNSLOTH_VLLM_STANDBY']} (vllm_standby={vllm_standby})"
+                f"[grpo] UNSLOTH_VLLM_STANDBY={os.environ['UNSLOTH_VLLM_STANDBY']} (vllm_standby={vllm_standby}, util_override=1)"
             )
 
     # Load model and tokenizer
