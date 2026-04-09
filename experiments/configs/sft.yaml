@@ -14,7 +14,7 @@ model:
   fast_inference: true # true = usa vLLM per generazione gold completions
   max_seq_length: 2048 # lunghezza massima sequenza per il modello (Unsloth)
   gpu_memory_utilization: 0.9 # frazione VRAM per vLLM
-  vllm_standby: true # true = vLLM resta in memoria tra gli step
+  vllm_standby: false # true = vLLM resta in memoria tra gli step
 
 # --- LoRA adapters ---
 lora:

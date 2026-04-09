@@ -22,8 +22,8 @@ model:
   use_unsloth: true
   fast_inference: true
   max_seq_length: 2048
-  gpu_memory_utilization: 0.30
-  vllm_standby: true
+  gpu_memory_utilization: 0.42
+  vllm_standby: false
 
 # --- LoRA adapters ---
 lora:
@@ -52,7 +52,7 @@ dataset:
 training:
   max_steps: 2500
   per_device_train_batch_size: 1
-  gradient_accumulation_steps: 16
+  gradient_accumulation_steps: 8
   learning_rate: 5.0e-6
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
@@ -68,8 +68,8 @@ training:
 
 # --- Parametri GRPO ---
 grpo:
-  num_generations: 4
-  max_completion_length: 1024
+  num_generations: 8
+  max_completion_length: 1536
   max_prompt_length: 512
   beta: 0.04
   temperature: 0.7
