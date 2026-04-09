@@ -55,9 +55,6 @@ mkdir -p logs
 # I dottorandi con accesso a internet possono commentare questa riga
 export WANDB_MODE=offline
 
-# Disabilita vLLM standby mode (stessa ragione di Colab)
-export UNSLOTH_VLLM_STANDBY=0
-
 # Percorso progetto
 cd "$HOME/GRPO-strict-generation"
 
@@ -86,7 +83,6 @@ echo ""
 # ── Esecuzione dentro container Apptainer ─────────────────────────────────────
 apptainer run --nv \
     --env WANDB_MODE=offline \
-    --env UNSLOTH_VLLM_STANDBY=0 \
     --env PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.8 \
     /shared/sifs/latest.sif \
     python -m src.training --config "${CONFIG}" ${EXTRA_ARGS}

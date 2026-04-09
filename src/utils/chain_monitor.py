@@ -553,17 +553,19 @@ def _parse_training_log(log_path: Path, job: JobInfo) -> None:
         job.stage_name = "COMPLETE"
 
     # 3. Get current step from last lines (step= or tqdm progress bar)
-    tail = _tail_lines(log_path, n=200)
+    tail = _tail_lines(log_path, n=1500)
 
     # 3b. Extract completion samples — use grep to find the last sample
     # block reliably, even when tqdm/metric lines push it out of the tail
     # window.
-    sample_tail = _tail_lines(log_path, n=800)
+    sample_tail = _tail_lines(log_path, n=1500)
     samples = _extract_completion_samples(
         sample_tail, max_lines=_SAMPLE_MAX_LINES
     )
     if samples:
         job.completion_samples = samples
+
+    # 3c. Find step + reward: scan from the end, take the last parseable match
     for line in reversed(tail):
         # Try key=value format: "  step=420  loss=0.005..."
         m = _KV_STEP.search(line)
@@ -607,7 +609,7 @@ def _parse_training_log(log_path: Path, job: JobInfo) -> None:
 
 def _parse_eval_log(log_path: Path, job: JobInfo) -> None:
     """Parse an eval log file and update job state."""
-    tail = _tail_lines(log_path, n=200)
+    tail = _tail_lines(log_path, n=500)
 
     eval_stages_seen = (
         0  # count how many "Evaluating: Stage" lines we've seen

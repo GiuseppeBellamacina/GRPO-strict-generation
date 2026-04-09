@@ -21,6 +21,7 @@ model:
   fast_inference: false
   max_seq_length: 2048
   gpu_memory_utilization: 0.45
+  vllm_standby: false
 
 # --- LoRA adapters ---
 lora:
@@ -93,5 +94,4 @@ evaluation:
 wandb:
   project: "grpo-strict-generation"
   run_name: "grpo-gemma2-2b-standard"
-  tags:
-    ["grpo", "Gemma-2-2B", "cluster-l40s", "standard", "nothink"]
+  tags: ["grpo", "Gemma-2-2B", "cluster-l40s", "standard", "nothink"]
