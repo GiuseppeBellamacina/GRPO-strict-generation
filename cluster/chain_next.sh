@@ -22,9 +22,11 @@
 PROJ_DIR="$HOME/GRPO-strict-generation"
 CHAIN_FILE="$PROJ_DIR/.job_chain"
 FAILED_FILE="$PROJ_DIR/.chain_failed"
+ERRORS_FILE="$PROJ_DIR/.chain_errors"
 POLL_INTERVAL=60  # secondi tra un check e l'altro
 MAX_TIMEOUT_RETRIES=2  # max auto-resume per TIMEOUT sullo stesso job
 MAX_OOM_RETRIES=2      # max auto-resume per OOM sullo stesso job
+MAX_CUDA_RETRIES=2     # max auto-resume per CUDA transient errors
 GPU_UTIL_DECREMENT="0.05"  # quanto ridurre gpu_memory_utilization ad ogni OOM
 
 cd "$PROJ_DIR"
@@ -45,6 +47,63 @@ is_oom_failure() {
         fi
     fi
     return 1
+}
+
+# Rileva CUDA errors transitori (illegal memory access, device-side assert, ecc.)
+# Questi errori spesso sono causati da pressione VRAM e possono risolversi con un restart.
+is_cuda_transient_failure() {
+    local job_id="$1" exit_code="$2" state="$3" tag="$4"
+    local logfile="$PROJ_DIR/logs/slurm-train-${job_id}.log"
+    if [ -f "$logfile" ]; then
+        if tail -200 "$logfile" | grep -qiE 'cudaErrorIllegalAddress|illegal memory access|cudaErrorLaunchFailure|device-side assert|AcceleratorError.*CUDA error'; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Logga un errore nel file persistente .chain_errors (formato JSONL).
+# Questo file persiste dopo la fine della pipeline per consultazione.
+# Parametri: job_id job_type config tag state exit_code error_type retry_num resolved
+log_job_error() {
+    local job_id="$1" job_type="$2" config="$3" tag="$4"
+    local state="$5" exit_code="$6" error_type="$7"
+    local retry_num="${8:-0}" resolved="${9:-false}"
+    local logfile="$PROJ_DIR/logs/slurm-${job_type}-${job_id}.log"
+
+    python3 -c "
+import json, datetime, os, re
+
+logfile = '${logfile}'
+snippet = ''
+if os.path.isfile(logfile):
+    with open(logfile, errors='replace') as f:
+        lines = f.readlines()
+    tail = lines[-200:]
+    keywords = ['error', 'cuda', 'oom', 'traceback', 'exception',
+                'illegal', 'killed', 'out of memory', 'sigkill',
+                'acceleratorerror', 'device-side assert']
+    err_lines = [l.strip() for l in tail
+                 if any(w in l.lower() for w in keywords)]
+    snippet = ' | '.join(err_lines[-5:])[:800]
+
+entry = {
+    'tag': '${tag}',
+    'job_type': '${job_type}',
+    'slurm_id': '${job_id}',
+    'config': '${config}',
+    'error_type': '${error_type}',
+    'slurm_state': '${state}',
+    'exit_code': '${exit_code}',
+    'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    'error_snippet': snippet,
+    'retry_num': int('${retry_num}' or '0'),
+    'resolved': '${resolved}' == 'true'
+}
+with open('${ERRORS_FILE}', 'a') as f:
+    f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+" 2>/dev/null
+    echo "[chain] 📝 Errore registrato in .chain_errors (${error_type}, ${tag}, job ${job_id})"
 }
 
 # Riduce gpu_memory_utilization nel YAML di $GPU_UTIL_DECREMENT
@@ -95,6 +154,8 @@ TIMEOUT_RETRIES=0  # contatore retry per il job corrente
 LAST_RETRY_TAG=""  # tag del job in retry (reset quando cambia job)
 OOM_RETRIES=0      # contatore retry OOM per il job corrente
 LAST_OOM_TAG=""    # tag del job in retry OOM
+CUDA_RETRIES=0     # contatore retry CUDA transient errors
+LAST_CUDA_TAG=""   # tag del job in retry CUDA
 
 while true; do
     # Se non c'è più il file catena, abbiamo finito
@@ -127,6 +188,7 @@ while true; do
                     fi
                     if [ "$TIMEOUT_RETRIES" -le "$MAX_TIMEOUT_RETRIES" ]; then
                         echo "[chain] ⏰ Ultimo job $LAST_JOB_ID ($FINAL_TAG) TIMEOUT — auto-resume ($TIMEOUT_RETRIES/$MAX_TIMEOUT_RETRIES) — $(date)"
+                        log_job_error "$LAST_JOB_ID" "$FINAL_TYPE" "$FINAL_CFG" "$FINAL_TAG" "$STATE" "$EXIT_CODE" "TIMEOUT" "$TIMEOUT_RETRIES" "true"
                         echo "train:${FINAL_CFG}:${FINAL_TAG}:--resume" > "$CHAIN_FILE"
                         LAST_JOB_ID=""
                         sleep 5
@@ -143,15 +205,41 @@ while true; do
                     if [ "$OOM_RETRIES" -le "$MAX_OOM_RETRIES" ]; then
                         echo "[chain] 💥 Ultimo job $LAST_JOB_ID ($FINAL_TAG) OOM — retry ($OOM_RETRIES/$MAX_OOM_RETRIES) — $(date)"
                         if reduce_gpu_memory_util "$FINAL_CFG"; then
+                            log_job_error "$LAST_JOB_ID" "$FINAL_TYPE" "$FINAL_CFG" "$FINAL_TAG" "$STATE" "$EXIT_CODE" "OOM" "$OOM_RETRIES" "true"
                             echo "train:${FINAL_CFG}:${FINAL_TAG}:--resume" > "$CHAIN_FILE"
                             LAST_JOB_ID=""
                             sleep 5
                             continue
                         else
                             echo "[chain] ❌ gpu_memory_utilization non riducibile — stop"
+                            log_job_error "$LAST_JOB_ID" "$FINAL_TYPE" "$FINAL_CFG" "$FINAL_TAG" "$STATE" "$EXIT_CODE" "OOM" "$OOM_RETRIES" "false"
                         fi
                     fi
+
+                elif is_cuda_transient_failure "$LAST_JOB_ID" "$EXIT_CODE" "$STATE" "$FINAL_TAG" && [ "$FINAL_TYPE" = "train" ]; then
+                    if [ "$FINAL_TAG" = "$LAST_CUDA_TAG" ]; then
+                        CUDA_RETRIES=$((CUDA_RETRIES + 1))
+                    else
+                        CUDA_RETRIES=1
+                        LAST_CUDA_TAG="$FINAL_TAG"
+                    fi
+                    if [ "$CUDA_RETRIES" -le "$MAX_CUDA_RETRIES" ]; then
+                        echo "[chain] ⚡ Ultimo job $LAST_JOB_ID ($FINAL_TAG) CUDA transient error — auto-resume ($CUDA_RETRIES/$MAX_CUDA_RETRIES) — $(date)"
+                        log_job_error "$LAST_JOB_ID" "$FINAL_TYPE" "$FINAL_CFG" "$FINAL_TAG" "$STATE" "$EXIT_CODE" "CUDA_ERROR" "$CUDA_RETRIES" "true"
+                        echo "train:${FINAL_CFG}:${FINAL_TAG}:--resume" > "$CHAIN_FILE"
+                        LAST_JOB_ID=""
+                        sleep 5
+                        continue
+                    fi
                 fi
+
+                # Classifica errore per il report persistente
+                _ERR_TYPE="UNKNOWN"
+                [ "$STATE" = "TIMEOUT" ] && _ERR_TYPE="TIMEOUT"
+                [ "$STATE" = "CANCELLED" ] || [ "$STATE" = "CANCELLED+" ] && _ERR_TYPE="CANCELLED"
+                is_oom_failure "$LAST_JOB_ID" "$EXIT_CODE" "$STATE" "$FINAL_TAG" 2>/dev/null && _ERR_TYPE="OOM"
+                is_cuda_transient_failure "$LAST_JOB_ID" "$EXIT_CODE" "$STATE" "$FINAL_TAG" 2>/dev/null && _ERR_TYPE="CUDA_ERROR"
+                log_job_error "$LAST_JOB_ID" "$FINAL_TYPE" "$FINAL_CFG" "$FINAL_TAG" "$STATE" "$EXIT_CODE" "$_ERR_TYPE" "0" "false"
 
                 echo "[chain] ❌ Ultimo job $LAST_JOB_ID ($LAST_JOB_DESC) FALLITO (state=$STATE exit=$EXIT_CODE) — $(date)"
                 echo "${LAST_JOB_DESC}" > "$FAILED_FILE"
@@ -207,6 +295,7 @@ while true; do
 
                 if [ "$TIMEOUT_RETRIES" -le "$MAX_TIMEOUT_RETRIES" ]; then
                     echo "[chain] ⏰ Job $LAST_JOB_ID ($FAILED_TAG) TIMEOUT — auto-resume ($TIMEOUT_RETRIES/$MAX_TIMEOUT_RETRIES) — $(date)"
+                    log_job_error "$LAST_JOB_ID" "$FAILED_TYPE" "$FAILED_CFG" "$FAILED_TAG" "$STATE" "$EXIT_CODE" "TIMEOUT" "$TIMEOUT_RETRIES" "true"
 
                     # Reinserisci il train con --resume + l'eval in testa alla catena
                     RESUME_CHAIN=$(mktemp)
@@ -233,6 +322,7 @@ while true; do
                 if [ "$OOM_RETRIES" -le "$MAX_OOM_RETRIES" ]; then
                     echo "[chain] 💥 Job $LAST_JOB_ID ($FAILED_TAG) OOM — retry ($OOM_RETRIES/$MAX_OOM_RETRIES) — $(date)"
                     if reduce_gpu_memory_util "$FAILED_CFG"; then
+                        log_job_error "$LAST_JOB_ID" "$FAILED_TYPE" "$FAILED_CFG" "$FAILED_TAG" "$STATE" "$EXIT_CODE" "OOM" "$OOM_RETRIES" "true"
                         RESUME_CHAIN=$(mktemp)
                         echo "train:${FAILED_CFG}:${FAILED_TAG}:--resume" > "$RESUME_CHAIN"
                         [ -f "$CHAIN_FILE" ] && [ -s "$CHAIN_FILE" ] && cat "$CHAIN_FILE" >> "$RESUME_CHAIN"
@@ -243,15 +333,49 @@ while true; do
                         continue
                     else
                         echo "[chain] ❌ gpu_memory_utilization non riducibile — stop"
+                        log_job_error "$LAST_JOB_ID" "$FAILED_TYPE" "$FAILED_CFG" "$FAILED_TAG" "$STATE" "$EXIT_CODE" "OOM" "$OOM_RETRIES" "false"
                     fi
                 else
                     echo "[chain] ❌ Job $LAST_JOB_ID ($FAILED_TAG) OOM — max retry ($MAX_OOM_RETRIES) raggiunto — $(date)"
                 fi
+
+            # ── CUDA transient error su un train: riprova con --resume ──
+            elif is_cuda_transient_failure "$LAST_JOB_ID" "$EXIT_CODE" "$STATE" "$FAILED_TAG" && [ "$FAILED_TYPE" = "train" ]; then
+                if [ "$FAILED_TAG" = "$LAST_CUDA_TAG" ]; then
+                    CUDA_RETRIES=$((CUDA_RETRIES + 1))
+                else
+                    CUDA_RETRIES=1
+                    LAST_CUDA_TAG="$FAILED_TAG"
+                fi
+
+                if [ "$CUDA_RETRIES" -le "$MAX_CUDA_RETRIES" ]; then
+                    echo "[chain] ⚡ Job $LAST_JOB_ID ($FAILED_TAG) CUDA transient error — auto-resume ($CUDA_RETRIES/$MAX_CUDA_RETRIES) — $(date)"
+                    log_job_error "$LAST_JOB_ID" "$FAILED_TYPE" "$FAILED_CFG" "$FAILED_TAG" "$STATE" "$EXIT_CODE" "CUDA_ERROR" "$CUDA_RETRIES" "true"
+                    RESUME_CHAIN=$(mktemp)
+                    echo "train:${FAILED_CFG}:${FAILED_TAG}:--resume" > "$RESUME_CHAIN"
+                    [ -f "$CHAIN_FILE" ] && [ -s "$CHAIN_FILE" ] && cat "$CHAIN_FILE" >> "$RESUME_CHAIN"
+                    mv "$RESUME_CHAIN" "$CHAIN_FILE"
+
+                    LAST_JOB_ID=""
+                    sleep 5
+                    continue
+                else
+                    echo "[chain] ❌ Job $LAST_JOB_ID ($FAILED_TAG) CUDA error — max retry ($MAX_CUDA_RETRIES) raggiunto — $(date)"
+                fi
+
             else
                 echo "[chain] ❌ Job $LAST_JOB_ID ($LAST_JOB_DESC) FALLITO — state=$STATE exit=$EXIT_CODE — $(date)"
             fi
 
             # ── Fallimento definitivo: ferma la pipeline ──────────────
+            # Classifica errore per il report persistente
+            _ERR_TYPE="UNKNOWN"
+            [ "$STATE" = "TIMEOUT" ] && _ERR_TYPE="TIMEOUT"
+            if [ "$STATE" = "CANCELLED" ] || [ "$STATE" = "CANCELLED+" ]; then _ERR_TYPE="CANCELLED"; fi
+            is_oom_failure "$LAST_JOB_ID" "$EXIT_CODE" "$STATE" "$FAILED_TAG" 2>/dev/null && _ERR_TYPE="OOM"
+            is_cuda_transient_failure "$LAST_JOB_ID" "$EXIT_CODE" "$STATE" "$FAILED_TAG" 2>/dev/null && _ERR_TYPE="CUDA_ERROR"
+            log_job_error "$LAST_JOB_ID" "$FAILED_TYPE" "$FAILED_CFG" "$FAILED_TAG" "$STATE" "$EXIT_CODE" "$_ERR_TYPE" "0" "false"
+
             if [ "$FAILED_TYPE" = "train" ] && [ -f "$CHAIN_FILE" ] && [ -s "$CHAIN_FILE" ]; then
                 NEXT_IN_CHAIN=$(head -1 "$CHAIN_FILE")
                 NEXT_TYPE=$(echo "$NEXT_IN_CHAIN" | cut -d: -f1)
@@ -277,6 +401,8 @@ while true; do
         LAST_RETRY_TAG=""
         OOM_RETRIES=0
         LAST_OOM_TAG=""
+        CUDA_RETRIES=0
+        LAST_CUDA_TAG=""
     fi
 
     # ── Sottometti il prossimo job ────────────────────────────────────────

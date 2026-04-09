@@ -35,6 +35,7 @@ CHAIN_PID_FILE = PROJ_DIR / ".chain_pid"
 CACHE_FILE = PROJ_DIR / ".monitor_cache"
 LOGS_DIR = PROJ_DIR / "logs"
 CHAIN_LOG = LOGS_DIR / "chain_watcher.log"
+ERRORS_FILE = PROJ_DIR / ".chain_errors"
 
 # Module-level setting for sample display (set by main() from --samples arg)
 _SAMPLE_MAX_LINES: int = 0  # 0 = no limit
@@ -86,6 +87,8 @@ class JobInfo:
     eval_step_total: int = 0  # total generation batches for eval
     exit_code: str = ""
     elapsed: str = ""  # elapsed time from squeue (e.g. "12:34")
+    error_type: str = ""  # error classification (OOM, CUDA_ERROR, TIMEOUT, etc.)
+    error_snippet: str = ""  # short error description from log
     tqdm_elapsed: str = ""  # elapsed time from tqdm bar
     tqdm_eta: str = ""  # remaining time from tqdm bar
     last_reward: str = ""  # last logged mean reward
@@ -181,6 +184,10 @@ def _cache_update_job(job: "JobInfo") -> None:
 
         if job.last_reward:
             entry["last_reward"] = job.last_reward
+        if job.error_type:
+            entry["error_type"] = job.error_type
+        if job.error_snippet:
+            entry["error_snippet"] = job.error_snippet
 
         entry["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         cache["jobs"][key] = entry
@@ -222,6 +229,36 @@ def _cache_enrich_job(job: "JobInfo") -> None:
         job.exit_code = entry["exit_code"]
     if not job.last_reward and entry.get("last_reward"):
         job.last_reward = entry["last_reward"]
+    if not job.error_type and entry.get("error_type"):
+        job.error_type = entry["error_type"]
+    if not job.error_snippet and entry.get("error_snippet"):
+        job.error_snippet = entry["error_snippet"]
+
+
+# ── Error log (.chain_errors) ─────────────────────────────────────────────────
+def _load_errors() -> dict[str, list[dict]]:
+    """Load errors from .chain_errors (JSONL format).
+
+    Returns a dict keyed by '{job_type}-{tag}' → list of error entries
+    (most recent last).
+    """
+    if not ERRORS_FILE.exists():
+        return {}
+    errors: dict[str, list[dict]] = {}
+    try:
+        for line in ERRORS_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            key = f"{entry.get('job_type', 'train')}-{entry.get('tag', '')}"
+            errors.setdefault(key, []).append(entry)
+    except OSError:
+        pass
+    return errors
 
 
 # ── SLURM queries ─────────────────────────────────────────────────────────────
@@ -1023,6 +1060,21 @@ def _build_pipeline() -> list[JobInfo]:
             )
         )
 
+    # ── Attach error info from .chain_errors ──────────────────────────
+    all_errors = _load_errors()
+    for job in jobs:
+        if job.state == "FAILED" and not job.error_type:
+            key = f"{job.job_type}-{job.tag}"
+            errs = all_errors.get(key, [])
+            if errs:
+                # Use last unresolved error, or last error overall
+                last_unresolved = [
+                    e for e in errs if not e.get("resolved", False)
+                ]
+                err = last_unresolved[-1] if last_unresolved else errs[-1]
+                job.error_type = err.get("error_type", "")
+                job.error_snippet = err.get("error_snippet", "")
+
     return jobs
 
 
@@ -1232,11 +1284,12 @@ def _format_status(job: JobInfo) -> str:
     elif job.state == "COMPLETED":
         pass  # details shown in metrics table
     elif job.state == "FAILED":
-        detail = (
-            f" {_RED}exit={job.exit_code}{_RST}"
-            if job.exit_code
-            else ""
-        )
+        parts = []
+        if job.error_type:
+            parts.append(f"{_RED}{_BOLD}{job.error_type}{_RST}")
+        if job.exit_code:
+            parts.append(f"{_RED}exit={job.exit_code}{_RST}")
+        detail = " " + " ".join(parts) if parts else ""
 
     # Pad with visible-width awareness (ANSI codes don't count)
     def _vpad(s: str, width: int) -> str:
@@ -1558,6 +1611,48 @@ def _display(
         print()
         for sl in running[0].completion_samples:
             print(f"  {sl}")
+
+    # ── Error report (always shown if there are failed jobs with error info) ──
+    failed_with_errors = [
+        j for j in jobs if j.state == "FAILED" and j.error_type
+    ]
+    if failed_with_errors:
+        print()
+        print(
+            f"  {_RED}{_BOLD}⚠ ERRORS ({len(failed_with_errors)}){_RST}"
+        )
+        print(f"  {_RED}{'─' * 60}{_RST}")
+        for j in failed_with_errors:
+            job_label = (
+                f"{j.job_type}-{_BOLD}{j.tag}{_RST}"
+                if j.tag
+                else j.job_type
+            )
+            slurm_id = (
+                f" {_DIM}[{j.slurm_id}]{_RST}" if j.slurm_id else ""
+            )
+            print(
+                f"  {_RED}✗{_RST} {job_label}{slurm_id}"
+                f"  {_RED}{_BOLD}{j.error_type}{_RST}"
+            )
+            if j.error_snippet:
+                # Show first 2 most relevant lines from snippet
+                parts = j.error_snippet.split(" | ")
+                shown = 0
+                for part in parts:
+                    part = part.strip()
+                    if not part:
+                        continue
+                    # Truncate long lines
+                    if len(part) > 100:
+                        part = part[:100] + "..."
+                    print(f"    {_DIM}{part}{_RST}")
+                    shown += 1
+                    if shown >= 2:
+                        break
+        print(
+            f"  {_DIM}Dettagli: cat .chain_errors | python3 -m json.tool{_RST}"
+        )
 
     print()
 
