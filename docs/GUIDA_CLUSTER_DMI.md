@@ -22,11 +22,11 @@ Guida completa per utilizzare il cluster GPU del Dipartimento di Matematica e In
 
 ### Nodi disponibili
 
-| Nodo | GPU | VRAM | Compute Capability | bf16 | Note |
-|------|-----|------|--------------------|------|------|
-| gnode1–4 | 1× K80 | 22 GB | 3.7 | ❌ | Solo fp32/fp16, no quantizzazione 4-bit |
-| gnode5 | 4× V100 | 16 GB ciascuna | 7.0 | ❌ | Riservato dottorandi. fp16 OK |
-| gnode10 | 4× L40S | 48 GB ciascuna | 8.9 | ✅ | Tutto supportato |
+| Nodo | GPU | VRAM | bf16 |
+|------|-----|------|------|
+| gnode1–4 | 1× K80 | 22 GB | ❌ |
+| gnode5 | 4× V100 | 16 GB ciascuna | ❌ |
+| gnode10 | 4× L40S | 48 GB ciascuna | ✅ | 
 
 ### QoS disponibili
 
