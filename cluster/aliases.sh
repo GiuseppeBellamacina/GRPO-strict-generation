@@ -109,8 +109,16 @@ ltree() {
 
 # ── GPU & risorse ────────────────────────────────────────────────────────────
 
-# Stato GPU — funziona solo dentro un job SLURM con GPU allocata
-alias gpu='nvidia-smi'
+# Stato GPU — esegue nvidia-smi sul nodo del job attivo via srun --overlap
+gpu() {
+    local jobid
+    jobid=$(squeue --me --noheader --format="%i" 2>/dev/null | head -1)
+    if [ -z "$jobid" ]; then
+        echo "❌ Nessun job SLURM attivo."
+        return 1
+    fi
+    srun --jobid="$jobid" --overlap nvidia-smi
+}
 
 # Uso disco del progetto
 alias quota='quota -s'
