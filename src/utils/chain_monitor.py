@@ -157,9 +157,11 @@ def _cache_update_job(job: "JobInfo") -> None:
     cache = _load_cache()
     key = f"{job.job_type}-{job.tag}"
 
-    # Always track the job in the pipeline list
-    if key not in cache["pipeline_jobs"]:
-        cache["pipeline_jobs"].append(key)
+    # Only update jobs that are already in the pipeline list.
+    # pipeline_jobs is managed exclusively by run_all.sh (append/remove).
+    # This prevents old jobs from sacct/chain_log leaking back in.
+    if key not in cache.get("pipeline_jobs", []):
+        return
 
     # For non-PENDING jobs, store detailed state
     if job.state != "PENDING":
