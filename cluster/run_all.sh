@@ -281,18 +281,11 @@ if [ "$APPEND" -eq 0 ] && [ "$REMOVE" -eq 0 ] && _watcher_is_alive; then
     APPEND=1
 fi
 
-# ── Append richiede --models ──────────────────────────────────────────────────
+# ── Append senza --models = tutti i modelli ───────────────────────────────────
 if [ "$APPEND" -eq 1 ] && [ -z "$ONLY_MODELS" ]; then
-    echo "❌ --append (o chain-add) richiede --models=SPEC per specificare quali job aggiungere."
-    echo "   Esempio: chain-add --models=1,3,5"
-    echo "            chain-add --models=2e,4t"
-    echo ""
-    echo "   Modelli disponibili:"
-    for i in "${!MODELS[@]}"; do
-        tag=$(echo "${MODELS[$i]}" | cut -d: -f1)
-        echo "     $((i+1)): $tag"
-    done
-    exit 1
+    # Costruisci la lista completa: 1,2,3,...,N
+    ONLY_MODELS=$(seq -s, 1 ${#MODELS[@]})
+    echo "ℹ️  --models non specificato — aggiungo tutti i modelli ($ONLY_MODELS)"
 fi
 
 # ── Remove mode ───────────────────────────────────────────────────────────────
