@@ -182,8 +182,11 @@ def main() -> None:
         )
 
     # Format prompts
+    thinking = config.get("dataset", {}).get("thinking", True)
     prompts = [
-        format_prompt_for_model(test_ds[i], tokenizer)
+        format_prompt_for_model(
+            test_ds[i], tokenizer, thinking=thinking
+        )
         for i in range(len(test_ds))
     ]
     difficulties = test_ds["difficulty"]

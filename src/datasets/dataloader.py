@@ -12,6 +12,30 @@ from src.utils.config import load_config  # noqa: F401
 from src.utils.distributed import is_main_process
 
 
+def build_system_prompt(thinking: bool = True) -> str:
+    """Build the system prompt instructing the model to output valid JSON.
+
+    Args:
+        thinking: If True, the model is asked to reason in <think>...</think>
+            before producing the JSON block. If False, only the JSON block is
+            expected (stricter, no chain-of-thought).
+    """
+    if thinking:
+        return (
+            "You are a helpful assistant that generates valid JSON. "
+            "Think through the problem inside <think>...</think> tags, then respond "
+            "with a JSON code block wrapped in ```json and ``` markers. "
+            "No other text is allowed outside the think block and the JSON block.\n\n"
+            "Example structure:\n"
+            "<think>\nYour reasoning here.\n</think>\n```json\n{...}\n```"
+        )
+    return (
+        "You are a helpful assistant that generates valid JSON. "
+        "Respond ONLY with a JSON code block. Do not include any explanation "
+        "before or after the JSON. Wrap your output in ```json and ``` markers."
+    )
+
+
 def load_synthetic_dataset(
     path: str = "data/synthetic",
     split: str | None = None,
@@ -93,12 +117,18 @@ _SYSTEM_ROLE_CACHE: dict[int, bool] = {}
 def format_prompt_for_model(
     sample: dict[str, Any],
     tokenizer: Any = None,
+    thinking: bool = True,
 ) -> str:
     """Format a dataset sample into a chat-template prompt string.
+
+    The system prompt is built from *thinking* — any ``system_prompt``
+    field already present in *sample* is ignored.
 
     If a tokenizer with apply_chat_template is provided, uses it.
     Otherwise falls back to a generic ChatML-style format.
     """
+    system_prompt = build_system_prompt(thinking)
+
     supports_system = (
         tokenizer is not None
         and hasattr(tokenizer, "apply_chat_template")
@@ -107,7 +137,7 @@ def format_prompt_for_model(
 
     if supports_system:
         messages = [
-            {"role": "system", "content": sample["system_prompt"]},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": sample["prompt"]},
         ]
     else:
@@ -116,9 +146,7 @@ def format_prompt_for_model(
         messages = [
             {
                 "role": "user",
-                "content": sample["system_prompt"]
-                + "\n\n"
-                + sample["prompt"],
+                "content": system_prompt + "\n\n" + sample["prompt"],
             },
         ]
 
@@ -140,13 +168,15 @@ def format_prompt_for_model(
 
 
 def prepare_grpo_dataset(
-    ds: Any, tokenizer: Any = None
+    ds: Any, tokenizer: Any = None, thinking: bool = True
 ) -> list[dict[str, str]]:
     """Prepare dataset for GRPOTrainer — returns list of dicts with 'prompt' key."""
     rows: list[dict[str, str]] = []
     for i in range(len(ds)):
         sample = ds[i]
-        prompt_text = format_prompt_for_model(sample, tokenizer)
+        prompt_text = format_prompt_for_model(
+            sample, tokenizer, thinking=thinking
+        )
         rows.append(
             {
                 "prompt": prompt_text,
@@ -157,14 +187,18 @@ def prepare_grpo_dataset(
 
 
 def prepare_sft_dataset(
-    ds: Any, gold_completions: list[str], tokenizer: Any = None
+    ds: Any,
+    gold_completions: list[str],
+    tokenizer: Any = None,
+    thinking: bool = True,
 ) -> list[dict[str, str]]:
     """Prepare dataset for SFTTrainer — returns list of dicts with full conversations."""
+    system_prompt = build_system_prompt(thinking)
     rows = []
     for i in range(len(ds)):
         sample = ds[i]
         messages = [
-            {"role": "system", "content": sample["system_prompt"]},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": sample["prompt"]},
             {"role": "assistant", "content": gold_completions[i]},
         ]

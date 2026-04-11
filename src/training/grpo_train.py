@@ -134,10 +134,16 @@ def _prepare_prompt_dataset(
     )
     train_ds = ds[config["dataset"].get("split", "train")]
 
+    thinking = config.get("dataset", {}).get("thinking", True)
+    if is_main_process():
+        print(f"[dataset] thinking={thinking}")
+
     formatted = []
     for i in range(len(train_ds)):
         sample = train_ds[i]
-        prompt = format_prompt_for_model(sample, tokenizer)
+        prompt = format_prompt_for_model(
+            sample, tokenizer, thinking=thinking
+        )
         entry: dict[str, str] = {
             "prompt": prompt,
             "difficulty": sample["difficulty"],
@@ -188,7 +194,6 @@ def _generate_curriculum_dataset(
             "difficulty_weights": difficulty_weights,
             "num_samples": num_samples,
             "seed": seed,
-            "thinking": thinking,
         }
 
         if save_path.exists() and meta_path.exists():
@@ -209,7 +214,7 @@ def _generate_curriculum_dataset(
                     for i in range(len(train_ds)):
                         sample = train_ds[i]
                         prompt = format_prompt_for_model(
-                            sample, tokenizer
+                            sample, tokenizer, thinking=thinking
                         )
                         entry: dict[str, str] = {
                             "prompt": prompt,
@@ -253,7 +258,6 @@ def _generate_curriculum_dataset(
         num_samples=num_samples,
         seed=seed,
         test_ratio=0.0,  # curriculum stages are train-only
-        thinking=thinking,
         difficulty_weights=difficulty_weights,
     )
     train_ds = ds["train"]
@@ -287,7 +291,6 @@ def _generate_curriculum_dataset(
                     "difficulty_weights": difficulty_weights,
                     "num_samples": num_samples,
                     "seed": seed,
-                    "thinking": thinking,
                 },
                 indent=2,
             ),
@@ -299,7 +302,9 @@ def _generate_curriculum_dataset(
     formatted: list[dict[str, str]] = []
     for i in range(len(train_ds)):
         sample = train_ds[i]
-        prompt = format_prompt_for_model(sample, tokenizer)
+        prompt = format_prompt_for_model(
+            sample, tokenizer, thinking=thinking
+        )
         entry_fmt: dict[str, str] = {
             "prompt": prompt,
             "difficulty": sample["difficulty"],
@@ -1050,6 +1055,7 @@ def _select_best_checkpoint(
     # Load test set — always use balanced eval dataset
     from src.evaluation.eval_dataset import load_eval_dataset
 
+    thinking = config.get("dataset", {}).get("thinking", True)
     test_ds = load_eval_dataset(config)
     max_eval = min(len(test_ds), 999)
     eval_ds = test_ds.select(range(max_eval))
@@ -1121,7 +1127,9 @@ def _select_best_checkpoint(
             continue
 
         prompts = [
-            format_prompt_for_model(eval_ds[i], ckpt_tokenizer)
+            format_prompt_for_model(
+                eval_ds[i], ckpt_tokenizer, thinking=thinking
+            )
             for i in range(len(eval_ds))
         ]
         completions = generate_completions(

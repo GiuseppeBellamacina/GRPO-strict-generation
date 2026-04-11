@@ -35,13 +35,11 @@ def load_eval_dataset(
     difficulty_weights = eval_cfg.get(
         "difficulty_weights", _DEFAULT_WEIGHTS
     )
-    thinking = config.get("dataset", {}).get("thinking", True)
 
     expected_meta = {
         "difficulty_weights": difficulty_weights,
         "num_samples": num_samples,
         "seed": _SEED,
-        "thinking": thinking,
     }
 
     # Try loading from cache
@@ -74,7 +72,6 @@ def load_eval_dataset(
         num_samples=num_samples,
         seed=_SEED,
         test_ratio=1.0,
-        thinking=thinking,
         difficulty_weights=difficulty_weights,
     )
 
