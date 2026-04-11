@@ -295,9 +295,9 @@ if [ "$REMOVE" -eq 1 ]; then
         exit 1
     fi
     if [ -z "$ONLY_MODELS" ]; then
-        echo "❌ --remove richiede --models=SPEC per specificare quali job rimuovere."
-        echo "   Esempio: bash cluster/run_all.sh --remove --models=3,5"
-        exit 1
+        # Senza --models rimuovi tutti i modelli della variante
+        ONLY_MODELS=$(seq -s, 1 ${#MODELS[@]})
+        echo "ℹ️  --models non specificato — rimuovo tutti i modelli ($ONLY_MODELS)"
     fi
 
     # Costruisci lista di tag da rimuovere
