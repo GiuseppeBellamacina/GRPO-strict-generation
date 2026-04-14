@@ -14,15 +14,15 @@
 
 ## Overview
 
-This project applies **Group Relative Policy Optimization (GRPO)** to fine-tune
-five small LLMs (135M–2B parameters) so that they generate **syntactically valid,
-schema-conformant JSON**. Instead of a neural reward model, five rule-based reward
-components score each completion (format, validity, schema, truncation, reasoning),
-providing a dense additive signal.
+This project applies **Group Relative Policy Optimization (GRPO)** to fine-tune five small LLMs (135M–2B parameters) so that they generate **syntactically valid, schema-conformant JSON**. Instead of a neural reward model, up to **seven rule-based reward components** score each completion, providing a dense, deterministic additive signal.
 
-Training uses a **3-stage curriculum** that progressively shifts difficulty from
-simple to hard prompts across 2 500 training steps, with **4-bit NF4 quantization**
-and **LoRA** (r=16) on a single NVIDIA L40S GPU via the DMI UniCT cluster.
+We extensively evaluated **four distinct training strategies** across 2 500 training steps (using 4-bit NF4 quantization and LoRA r=16 on a single NVIDIA L40S GPU):
+1. **No-Think Standard:** Direct JSON generation on a mixed-difficulty dataset.
+2. **No-Think Curriculum:** Direct generation with progressive difficulty scaling (3 stages).
+3. **Think Standard:** Intermediate `<think>` reasoning steps required on a mixed dataset.
+4. **Think Curriculum:** Intermediate `<think>` steps with progressive difficulty scaling.
+
+> 📖 **For comprehensive theoretical details, heatmaps, error evolution, and cross-modality analyses, read the full [REPORT.md](docs/REPORT.md).**
 
 ### Models
 
@@ -34,265 +34,63 @@ and **LoRA** (r=16) on a single NVIDIA L40S GPU via the DMI UniCT cluster.
 | TinyLlama-1.1B-Chat-v1.0 | 1.1B | LLaMA 2 |
 | Gemma-2-2B-it | 2B | Gemma 2 |
 
-> For theoretical details, ablations, and results see **[REPORT.md](docs/REPORT.md)**.
+### Key Results (Peak Performance)
 
-### Key Results
+After 2 500 GRPO training steps, all five models converged to a tight **87–99% Pass@1 band**. The addition of reasoning tokens and Curriculum Learning proved exceptionally transformative for smaller, capacity-constrained models:
 
-After 2 500 GRPO training steps with curriculum learning, all five models converge to the 86–97% Pass@1 range:
+| Model | Baseline | Peak Post-GRPO | Best Configuration | Max Absolute Gain |
+|:---|:---:|:---:|:---|:---:|
+| SmolLM2-135M | ~31% | **90.00%** | Think / Standard | **+58.67 pp** |
+| SmolLM2-360M | ~78% | **96.67%** | No-Think / Standard | **+19.00 pp** |
+| Qwen2.5-0.5B | ~92% | **98.00%** | Think / Curriculum | **+6.33 pp** |
+| TinyLlama-1.1B | ~79% | **99.33%** | No-Think / Curriculum | **+20.00 pp** |
+| Gemma-2-2B | ~97% | **97.67%** | Think & No-Think / Curriculum | **+1.33 pp** |
 
-| Model | Baseline | Post-GRPO | Δ |
-|:---|:---:|:---:|:---:|
-| SmolLM2-135M | 38.67% | 86.00% | **+47.33 pp** |
-| SmolLM2-360M | 77.33% | 94.67% | **+17.33 pp** |
-| Qwen2.5-0.5B | 93.00% | 96.33% | **+3.33 pp** |
-| TinyLlama-1.1B | 73.00% | 96.33% | **+23.33 pp** |
-| Gemma-2-2B | 96.00% | 97.33% | **+1.33 pp** |
+*Note: Baselines varied slightly between Think/No-Think system prompts. See the [full report](docs/REPORT.md) for detailed stage-by-stage breakdowns.*
 
 ## Repository Structure
 
+[**Complete Repository Structure**](docs/REPO_STRUCTURE.md)
+
 ```text
-├── 📁 .devcontainer
-│   └── ⚙️ devcontainer.json
-├── 📁 .githooks
-│   ├── 📝 README.md
-│   └── 📄 pre-push
-├── 📁 cluster
-│   ├── 📄 aliases.sh
-│   ├── 📄 chain_next.sh
-│   ├── 📄 clean.sh
-│   ├── 📄 clean_model.sh
-│   ├── 📄 eval.sh
-│   ├── 📄 run_all.sh
-│   ├── 📄 setup.sh
-│   └── 📄 train.sh
-├── 📁 data
-│   └── 📁 syntethic
-├── 📁 docs
-│   ├── 📁 papers
-│   │   ├── 📕 2502.14905v1.pdf
-│   │   ├── 📕 2504.13958v1.pdf
-│   │   ├── 📕 2506.11027v2.pdf
-│   │   └── 📕 2512.00319v2.pdf
-│   ├── 📝 CLUSTER.md
-│   ├── 📝 MODELS.md
-│   ├── 📝 QUICK_SETUP.md
-│   ├── 📝 REFERENCES.md
-│   ├── 📝 REPORT.md
-│   └── 📝 SLURM_COMMANDS.md
-├── 📁 experiments
-│   ├── 📁 configs
-│   │   ├── ⚙️ baseline.yaml
-│   │   ├── ⚙️ grpo_colab.yaml
-│   │   ├── ⚙️ grpo_gemma2.yaml
-│   │   ├── ⚙️ grpo_qwen05.yaml
-│   │   ├── ⚙️ grpo_smollm2_135m.yaml
-│   │   ├── ⚙️ grpo_smollm2_360m.yaml
-│   │   ├── ⚙️ grpo_tinyllama.yaml
-│   │   └── ⚙️ sft.yaml
-│   └── 📁 logs
-│       └── 📁 grpo
-│           ├── 📁 gemma2-2b
-│           │   ├── 📁 eval_20260404_195549
-│           │   │   ├── 📁 figures
-│           │   │   │   ├── 🖼️ baseline_vs_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ curriculum_progression.png
-│           │   │   │   ├── 🖼️ error_evolution.png
-│           │   │   │   ├── 🖼️ errors_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ errors_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ errors_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ lengths_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ lengths_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ lengths_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ rescued_vs_regressed.png
-│           │   │   │   └── 🖼️ stage_difficulty_heatmap.png
-│           │   │   ├── ⚙️ comparison.json
-│           │   │   ├── ⚙️ completions_baseline.json
-│           │   │   ├── ⚙️ completions_stage_1_format_basics.json
-│           │   │   ├── ⚙️ completions_stage_2_progressive.json
-│           │   │   ├── ⚙️ completions_stage_3_full_difficulty.json
-│           │   │   ├── ⚙️ eval_stage_1_format_basics.json
-│           │   │   ├── ⚙️ eval_stage_2_progressive.json
-│           │   │   └── ⚙️ eval_stage_3_full_difficulty.json
-│           │   ├── 📁 train_20260404_095349
-│           │   └── ⚙️ baseline_results.json
-│           ├── 📁 qwen25-05b
-│           │   ├── 📁 eval_20260404_045440
-│           │   │   ├── 📁 figures
-│           │   │   │   ├── 🖼️ baseline_vs_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ curriculum_progression.png
-│           │   │   │   ├── 🖼️ error_evolution.png
-│           │   │   │   ├── 🖼️ errors_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ errors_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ errors_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ lengths_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ lengths_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ lengths_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ rescued_vs_regressed.png
-│           │   │   │   └── 🖼️ stage_difficulty_heatmap.png
-│           │   │   ├── ⚙️ comparison.json
-│           │   │   ├── ⚙️ completions_baseline.json
-│           │   │   ├── ⚙️ completions_stage_1_format_basics.json
-│           │   │   ├── ⚙️ completions_stage_2_progressive.json
-│           │   │   ├── ⚙️ completions_stage_3_full_difficulty.json
-│           │   │   ├── ⚙️ eval_stage_1_format_basics.json
-│           │   │   ├── ⚙️ eval_stage_2_progressive.json
-│           │   │   └── ⚙️ eval_stage_3_full_difficulty.json
-│           │   ├── 📁 train_20260404_023024
-│           │   └── ⚙️ baseline_results.json
-│           ├── 📁 smollm2-135m
-│           │   ├── 📁 eval_20260403_213246
-│           │   │   ├── 📁 figures
-│           │   │   │   ├── 🖼️ baseline_vs_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ curriculum_progression.png
-│           │   │   │   ├── 🖼️ error_evolution.png
-│           │   │   │   ├── 🖼️ errors_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ errors_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ errors_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ lengths_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ lengths_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ lengths_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ rescued_vs_regressed.png
-│           │   │   │   └── 🖼️ stage_difficulty_heatmap.png
-│           │   │   ├── ⚙️ comparison.json
-│           │   │   ├── ⚙️ completions_baseline.json
-│           │   │   ├── ⚙️ completions_stage_1_format_basics.json
-│           │   │   ├── ⚙️ completions_stage_2_progressive.json
-│           │   │   ├── ⚙️ completions_stage_3_full_difficulty.json
-│           │   │   ├── ⚙️ eval_stage_1_format_basics.json
-│           │   │   ├── ⚙️ eval_stage_2_progressive.json
-│           │   │   └── ⚙️ eval_stage_3_full_difficulty.json
-│           │   ├── 📁 train_20260403_182533
-│           │   └── ⚙️ baseline_results.json
-│           ├── 📁 smollm2-360m
-│           │   ├── 📁 eval_20260404_014114
-│           │   │   ├── 📁 figures
-│           │   │   │   ├── 🖼️ baseline_vs_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ baseline_vs_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ curriculum_progression.png
-│           │   │   │   ├── 🖼️ error_evolution.png
-│           │   │   │   ├── 🖼️ errors_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ errors_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ errors_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ lengths_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ lengths_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ lengths_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_1_format_basics.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_2_progressive.png
-│           │   │   │   ├── 🖼️ pass_rates_stage_3_full_difficulty.png
-│           │   │   │   ├── 🖼️ rescued_vs_regressed.png
-│           │   │   │   └── 🖼️ stage_difficulty_heatmap.png
-│           │   │   ├── ⚙️ comparison.json
-│           │   │   ├── ⚙️ completions_baseline.json
-│           │   │   ├── ⚙️ completions_stage_1_format_basics.json
-│           │   │   ├── ⚙️ completions_stage_2_progressive.json
-│           │   │   ├── ⚙️ completions_stage_3_full_difficulty.json
-│           │   │   ├── ⚙️ eval_stage_1_format_basics.json
-│           │   │   ├── ⚙️ eval_stage_2_progressive.json
-│           │   │   └── ⚙️ eval_stage_3_full_difficulty.json
-│           │   ├── 📁 train_20260403_222900
-│           │   └── ⚙️ baseline_results.json
-│           └── 📁 tinyllama-11b
-│               ├── 📁 eval_20260404_081506
-│               │   ├── 📁 figures
-│               │   │   ├── 🖼️ baseline_vs_stage_1_format_basics.png
-│               │   │   ├── 🖼️ baseline_vs_stage_2_progressive.png
-│               │   │   ├── 🖼️ baseline_vs_stage_3_full_difficulty.png
-│               │   │   ├── 🖼️ curriculum_progression.png
-│               │   │   ├── 🖼️ error_evolution.png
-│               │   │   ├── 🖼️ errors_stage_1_format_basics.png
-│               │   │   ├── 🖼️ errors_stage_2_progressive.png
-│               │   │   ├── 🖼️ errors_stage_3_full_difficulty.png
-│               │   │   ├── 🖼️ lengths_stage_1_format_basics.png
-│               │   │   ├── 🖼️ lengths_stage_2_progressive.png
-│               │   │   ├── 🖼️ lengths_stage_3_full_difficulty.png
-│               │   │   ├── 🖼️ pass_rates_stage_1_format_basics.png
-│               │   │   ├── 🖼️ pass_rates_stage_2_progressive.png
-│               │   │   ├── 🖼️ pass_rates_stage_3_full_difficulty.png
-│               │   │   ├── 🖼️ rescued_vs_regressed.png
-│               │   │   └── 🖼️ stage_difficulty_heatmap.png
-│               │   ├── ⚙️ comparison.json
-│               │   ├── ⚙️ completions_baseline.json
-│               │   ├── ⚙️ completions_stage_1_format_basics.json
-│               │   ├── ⚙️ completions_stage_2_progressive.json
-│               │   ├── ⚙️ completions_stage_3_full_difficulty.json
-│               │   ├── ⚙️ eval_stage_1_format_basics.json
-│               │   ├── ⚙️ eval_stage_2_progressive.json
-│               │   └── ⚙️ eval_stage_3_full_difficulty.json
-│               ├── 📁 train_20260404_051851
-│               └── ⚙️ baseline_results.json
-├── 📁 notebooks
-│   ├── 📁 reference
-│   │   ├── 📄 Advanced_Llama3_2_(3B)_GRPO_LoRA.ipynb
-│   │   └── 📄 Llama3_1_(8B)_GRPO.ipynb
-│   ├── 📄 01_test_config_and_train.ipynb
-│   ├── 📄 02_test_config_and_train_fast.ipynb
-│   └── 📄 03_full_pipeline.ipynb
-├── 📁 src
-│   ├── 📁 datasets
-│   │   ├── 🐍 __init__.py
-│   │   ├── 🐍 dataloader.py
-│   │   ├── 🐍 synthetic_dataset.py
-│   │   └── 🐍 templates.py
-│   ├── 📁 evaluation
-│   │   ├── 🐍 __init__.py
-│   │   ├── 🐍 __main__.py
-│   │   ├── 🐍 eval_baseline.py
-│   │   ├── 🐍 eval_dataset.py
-│   │   └── 🐍 eval_grpo.py
-│   ├── 📁 models
-│   │   ├── 🐍 __init__.py
-│   │   └── 🐍 model_loader.py
-│   ├── 📁 training
-│   │   ├── 🐍 __init__.py
-│   │   ├── 🐍 __main__.py
-│   │   ├── 🐍 callbacks.py
-│   │   ├── 🐍 grpo_train.py
-│   │   ├── 🐍 grpo_vanilla.py
-│   │   ├── 🐍 rewards.py
-│   │   └── 🐍 sft_train.py
-│   ├── 📁 utils
-│   │   ├── 🐍 __init__.py
-│   │   ├── 🐍 chain_monitor.py
-│   │   ├── 🐍 config.py
-│   │   ├── 🐍 distributed.py
-│   │   ├── 🐍 live_training_table.py
-│   │   ├── 🐍 metrics.py
-│   │   ├── 🐍 show_training_log.py
-│   │   └── 🐍 visualization.py
-│   └── 🐍 __init__.py
-├── 📁 tests
-│   ├── 🐍 __init__.py
-│   └── 🐍 test_rewards.py
-├── ⚙️ .dockerignore
-├── ⚙️ .env.example
-├── ⚙️ .gitattributes
-├── ⚙️ .gitignore
-├── 🐳 Dockerfile
-├── 📄 LICENSE
-├── 📝 README.md
-├── ⚙️ docker-compose.yml
-├── 📄 format.ps1
-├── 📄 format.sh
-├── ⚙️ pyproject.toml
-├──  setup.sh
-└── 📄 sync_cluster.ps1
+├── 📁 cluster/                     # Slurm scripts and cluster management
+├── 📁 data/                        # Synthetic dataset generation outputs
+├── 📁 docs/                        # Documentation and Papers
+│   ├── 📝 REPORT.md                # <--- FULL RESULTS AND ANALYSIS HERE
+│   └── ...
+├── 📁 experiments/
+│   ├── 📁 configs/                 # YAML configurations for training & eval
+│   └── 📁 logs/grpo/
+│       ├── 📁 nothink/
+│       │   ├── 📁 standard/        # Evaluation artifacts & figures (No-Think)
+│       │   └── 📁 curriculum/
+│       └── 📁 think/
+│           ├── 📁 standard/        # Evaluation artifacts & figures (Think)
+│           └── 📁 curriculum/
+├── 📁 notebooks/                   # Jupyter notebooks for fast prototyping
+├── 📁 src/
+│   ├── 📁 datasets/                # Synthetic data generation and loaders
+│   ├── 📁 evaluation/              # Pass@1, schema validation, figure generation
+│   ├── 📁 models/                  # LoRA and quantization utilities
+│   ├── 📁 training/                # GRPO Trainer and Curriculum logic
+│   │   └── 🐍 rewards.py           # 7-component rule-based reward system
+│   └── 📁 utils/
+└── 📄 pyproject.toml               # uv dependencies
 ```
+
+## Reward Function
+
+The framework utilizes a purely rule-based approach, avoiding the overhead of a neural reward model. The total reward is an additive combination of up to seven components. When reasoning (`thinking: false`) is disabled, its weight is automatically redistributed to preserve component ratios.
+
+| Component | Purpose |
+|---|---|
+| **Format** | Checks for a proper ` ```json ... ``` ` markdown code fence. |
+| **Validity** | Graduated score based on JSON parseability (partial credit for late-string errors). |
+| **Schema** | Structural conformance to exact constraints (keys, types, counts, nesting depth). |
+| **Reasoning** | Evaluates `<think>…</think>` blocks for minimum character count and originality. |
+| **Truncation** | Penalizes generations interrupted mid-token (e.g., unclosed braces/brackets). |
+| **Repetition** | Penalizes degenerate loops (token looping, repeated lines, duplicate code blocks). |
+| **Strictness** | Penalizes "chatty" text outside the requested JSON or Think blocks. |
 
 ## Setup
 
@@ -307,17 +105,13 @@ uv sync                 # core dependencies
 uv sync --extra dev     # + ruff, pytest, black
 ```
 
-**Cluster setup**: see [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md) for
-step-by-step instructions or [docs/CLUSTER.md](docs/CLUSTER.md) for the
-full guide.
+**Cluster setup**: see [docs/QUICK_SETUP.md](docs/QUICK_SETUP.md) for step-by-step instructions or [docs/CLUSTER.md](docs/CLUSTER.md) for the full Slurm guide.
 
 ## Usage
 
 ### 1. Generate the Synthetic Dataset (optional)
 
-The training and evaluation pipelines generate the dataset automatically from
-the YAML config. You only need this if you want to pre-generate or inspect the
-dataset independently:
+The training and evaluation pipelines generate the dataset automatically from the YAML config. You only need this to inspect it independently:
 
 ```bash
 uv run python -m src.datasets.synthetic_dataset \
@@ -331,86 +125,37 @@ uv run python -m src.datasets.synthetic_dataset \
 Evaluate off-the-shelf models without any fine-tuning:
 
 ```bash
-uv run python -m src.evaluation \
-    --config experiments/configs/baseline.yaml
+uv run python -m src.evaluation --config experiments/configs/baseline.yaml
 ```
 
-Alternatively, the baseline is evaluated automatically when running post-training
-evaluation with `--compare` (see §4).
+### 3. GRPO Training
 
-### 3. GRPO Training (Curriculum)
-
-Each model has its own config. Training runs a 3-stage curriculum automatically:
+Each model has its own config. To enable reasoning or curriculum learning, adjust the `thinking` and `curriculum` flags in the respective YAML files.
 
 ```bash
-# Single model
-uv run python -m src.training \
-    --config experiments/configs/grpo_smollm2_135m.yaml
+# Single model training
+uv run python -m src.training --config experiments/configs/grpo_smollm2_135m.yaml
 
 # Resume from checkpoint
-uv run python -m src.training \
-    --config experiments/configs/grpo_smollm2_135m.yaml --resume
+uv run python -m src.training --config experiments/configs/grpo_smollm2_135m.yaml --resume
 ```
 
 On the cluster, use the multi-model chain pipeline:
 ```bash
-run-all                    # train + eval all 5 models sequentially
+run-all                    # train + eval all models sequentially
 run-all --models=1,2,3     # specific models only
 monitor                    # live dashboard (compact)
-monitor --tab              # full job table
 ```
 
 ### 4. Post-Training Evaluation
 
 ```bash
 # Evaluate final checkpoint vs baseline
-uv run python -m src.evaluation \
-    --config experiments/configs/grpo_smollm2_135m.yaml --compare
+uv run python -m src.evaluation --config experiments/configs/grpo_smollm2_135m.yaml --compare
 
-# Evaluate all curriculum stages + baseline (full analysis)
-uv run python -m src.evaluation \
-    --config experiments/configs/grpo_smollm2_135m.yaml --curriculum
+# Evaluate all curriculum stages + baseline (generates the full analysis suite)
+uv run python -m src.evaluation --config experiments/configs/grpo_smollm2_135m.yaml --curriculum
 ```
-
-### 5. Sync with Cluster (Windows)
-
-```powershell
-.\sync_cluster.ps1 -Action upload               # upload project files
-.\sync_cluster.ps1 -Action download             # download all results
-.\sync_cluster.ps1 -Action download-logs        # logs + figures only
-.\sync_cluster.ps1 -Action download-checkpoints # LoRA adapters
-.\sync_cluster.ps1 -Action download-wandb       # wandb offline runs
-```
-
-## Reward Function
-
-Five **additive** reward components score each completion; weights sum to 1.0.
-Reasoning is disabled by default (`thinking: false`) and its weight is
-redistributed to the other components.
-
-| Component | Weight | Description |
-|---|---|---|
-| **Format** | 0.25 | Presence of a ` ```json ... ``` ` code block (partial credit for generic ` ``` `) |
-| **Validity** | 0.30 | JSON parseable by `json.loads` (graded score) |
-| **Schema** | 0.30 | Structural conformance to prompt constraints (keys, types, counts) |
-| **Truncation** | 0.15 | Penalises completions that hit `max_completion_length` mid-token |
-| **Reasoning** | 0.00 | `<think>…</think>` block with real content (disabled, weight = 0) |
-
-## Configs
-
-Each model has a dedicated GRPO config specifying its HuggingFace ID, chat
-template, and per-model hyperparameters. Curriculum stages and reward weights
-are shared across all configs.
-
-| Config | Purpose |
-|---|---|
-| [`grpo_smollm2_135m.yaml`](experiments/configs/grpo_smollm2_135m.yaml) | GRPO — SmolLM2-135M-Instruct |
-| [`grpo_smollm2_360m.yaml`](experiments/configs/grpo_smollm2_360m.yaml) | GRPO — SmolLM2-360M-Instruct |
-| [`grpo_qwen05.yaml`](experiments/configs/grpo_qwen05.yaml) | GRPO — Qwen2.5-0.5B-Instruct |
-| [`grpo_tinyllama.yaml`](experiments/configs/grpo_tinyllama.yaml) | GRPO — TinyLlama-1.1B-Chat-v1.0 |
-| [`grpo_gemma2.yaml`](experiments/configs/grpo_gemma2.yaml) | GRPO — Gemma-2-2B-it |
-| [`baseline.yaml`](experiments/configs/baseline.yaml) | Off-the-shelf baseline evaluation |
-| [`sft.yaml`](experiments/configs/sft.yaml) | Supervised fine-tuning (experimental, not used in final results) |
 
 ## License
 
