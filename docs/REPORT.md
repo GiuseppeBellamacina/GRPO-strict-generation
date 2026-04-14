@@ -8,7 +8,7 @@
 
 Large Language Models can produce fluent natural language but frequently struggle with **structured output** — syntactically valid, schema-conformant JSON is critical for tool-use, API integrations, and agent pipelines, yet even instruction-tuned models inject conversational filler, omit closing brackets, or violate type constraints.
 
-This project investigates whether **Group Relative Policy Optimization (GRPO)** [6], a reinforcement learning technique that forgoes a neural reward model in favour of group-level advantage normalisation, can reliably teach small LLMs (135 M – 2 B parameters) to produce strict JSON output.
+This project investigates whether **Group Relative Policy Optimization (GRPO)** [9], a reinforcement learning technique that forgoes a neural reward model in favour of group-level advantage normalisation, can reliably teach small LLMs (135 M – 2 B parameters) to produce strict JSON output.
 
 Recent work has shown that rule-based rewards can effectively guide LLMs toward strict schema adherence [1] and that lightweight RL frameworks can enforce structured output without large-scale RLHF infrastructure [2]. Reward-driven RL has also proved effective for tool-use tasks [4], while curriculum-style GRPO training has been applied to code generation [3]. Building on these insights, our main hypothesis is that a combination of (i) five rule-based reward components providing dense, interpretable signal, (ii) a 3-stage curriculum that gradually increases task difficulty, and (iii) parameter-efficient 4-bit LoRA fine-tuning is sufficient to bring sub-2 B models from near-zero JSON compliance to high pass rates — closing the gap to much larger proprietary models for this narrow but practically important task.
 
@@ -640,10 +640,16 @@ All architectural decisions (reward component design, curriculum staging, model 
 
 [4] C. Qian, E. C. Acikgoz, Q. He, H. Wang, X. Chen, D. Hakkani-Tür, G. Tur, H. Ji, "ToolRL: Reward is All Tool Learning Needs," *arXiv:2504.13958*, 2025. [Paper](https://arxiv.org/abs/2504.13958) · [PDF](papers/2504.13958v1.pdf)
 
-[5] Unsloth Documentation. [https://unsloth.ai/docs](https://unsloth.ai/docs)
+[5] P. Jayarao, H. Gupta, N. Varshney, C. Dwivedi, "Explicit Reasoning Makes Better Judges: A Systematic Study on Accuracy, Efficiency, and Robustness," *arXiv:2509.13332*, 2025. [Paper](https://arxiv.org/abs/2509.13332) · [PDF](papers/2509.13332v1.pdf)
 
-[6] Ando AI, "AI GRPO — A Deep Dive into Group Relative Policy Optimization." [https://blog.ando.ai/posts/ai-grpo/](https://blog.ando.ai/posts/ai-grpo/)
+[6] G. Fang, X. Ma, X. Wang, "Thinkless: LLM Learns When to Think," *arXiv:2505.13379*, 2025. [Paper](https://arxiv.org/abs/2505.13379) · [PDF](papers/2505.13379v2.pdf)
 
-[7] L. Bometon, "Fine-Tuning GRPO with LLM Judge: From Zero to Production," Medium, 2025. [https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd](https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd)
+[7] H. Huang, Y. He, H. Zhou, R. Zhang, W. Liu, W. Wang, J. Liu, W. Su, "Think-J: Learning to Think for Generative LLM-as-a-Judge," *arXiv:2505.14268*, 2026. [Paper](https://arxiv.org/abs/2505.14268) · [PDF](papers/2505.14268v2.pdf)
 
-[8] Patronus AI, "Guide to RL Environments for LLMs." [https://www.patronus.ai/guide-to-rl-environments](https://www.patronus.ai/guide-to-rl-environments)
+[8] Unsloth Documentation. [https://unsloth.ai/docs](https://unsloth.ai/docs)
+
+[9] Ando AI, "AI GRPO — A Deep Dive into Group Relative Policy Optimization." [https://blog.ando.ai/posts/ai-grpo/](https://blog.ando.ai/posts/ai-grpo/)
+
+[10] L. Bometon, "Fine-Tuning GRPO with LLM Judge: From Zero to Production," Medium, 2025. [https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd](https://medium.com/@lbometon2/fine-tuning-grpo-with-llm-judge-from-zero-to-production-69a25a4ab3bd)
+
+[11] Patronus AI, "Guide to RL Environments for LLMs." [https://www.patronus.ai/guide-to-rl-environments](https://www.patronus.ai/guide-to-rl-environments)
