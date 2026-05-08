@@ -4,14 +4,6 @@
 [![References](https://img.shields.io/badge/References-REFERENCES.md-green)](docs/REFERENCES.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Project Information
-
-| Field | Value |
-|---|---|
-| **Project ID** | 23 |
-| **Track** | Align a Small LLM with GRPO for Strict Code or JSON Generation |
-| **Module** | Reinforcement Learning |
-
 ## Overview
 
 This project applies **Group Relative Policy Optimization (GRPO)** to fine-tune five small LLMs (135M–2B parameters) so that they generate **syntactically valid, schema-conformant JSON**. Instead of a neural reward model, up to **seven rule-based reward components** score each completion, providing a dense, deterministic additive signal.
