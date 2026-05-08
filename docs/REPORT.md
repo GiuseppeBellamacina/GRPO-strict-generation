@@ -1,8 +1,4 @@
 # Align a Small LLM with GRPO for Strict JSON Generation
-- **Group ID**: G23
-- **Project ID**: 23
-
----
 
 ## 1. Introduction and Objective
 
