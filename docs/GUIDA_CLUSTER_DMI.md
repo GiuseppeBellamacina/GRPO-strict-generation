@@ -278,15 +278,7 @@ sacct --starttime=$(date -d '7 days ago' +%Y-%m-%d) \
 sacct -u $USER --format=JobID,JobName,State,ExitCode,Elapsed,Start,End
 ```
 
-### 5.5. Efficienza di un job completato
-
-```bash
-seff <JOB_ID>
-```
-
-Mostra utilizzo CPU, RAM e tempo effettivo vs. richiesto.
-
-### 5.6. Risorse usate
+### 5.5. Risorse usate
 
 ```bash
 # Job in corso
@@ -296,7 +288,7 @@ sstat -aPno TresUsageInMax -j <JOB_ID>
 sacct -aPno TresUsageInMax -j <JOB_ID>
 ```
 
-### 5.7. Cancellare job
+### 5.6. Cancellare job
 
 ```bash
 # Job specifico

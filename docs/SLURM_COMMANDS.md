@@ -104,15 +104,6 @@ sacct --starttime=$(date -d '7 days ago' +%Y-%m-%d) --format=JobID,JobName,State
 sacct -u $USER --format=JobID,JobName,State,ExitCode,Elapsed,Start,End
 ```
 
-### Efficienza di un job completato
-
-```bash
-seff 12345
-```
-> Mostra utilizzo CPU, RAM e tempo effettivo vs. richiesto.
-
----
-
 ## 3. Cancellazione Job
 
 ### Cancellare un job specifico
